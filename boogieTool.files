@@ -1,0 +1,6 @@
+bin/Debug/boogieTool
+include/common/Log.h
+src/common/Log.cpp
+boogieTool.cbp
+boogieTool.layout
+main.cpp
