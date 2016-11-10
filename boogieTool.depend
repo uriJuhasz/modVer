@@ -1,0 +1,23 @@
+# depslib dependency file v1.0
+1478742137 source:/home/uri/projects/boogieTool/main.cpp
+	<iostream>
+	<vector>
+	<chrono>
+	<iomanip>
+	<fstream>
+	"common/Log.h"
+
+1478741878 source:/home/uri/projects/boogieTool/src/common/Log.cpp
+	"common/Log.h"
+	<iostream>
+
+1478739616 /home/uri/projects/boogieTool/include/common/Log.h
+	<map>
+	<ostream>
+	<string>
+
+1478742661 source:/home/uri/projects/boogieTool/src/parser/Pos.cpp
+	"parser/Pos.h"
+
+1478742661 /home/uri/projects/boogieTool/include/parser/Pos.h
+
