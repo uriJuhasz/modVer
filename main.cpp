@@ -28,7 +28,7 @@ int main(int argc, char*argv[])
     auto nowT = time(nullptr);
     auto now = localtime(&nowT);
     auto nowString = time2String(*now);
-    log.log(0,Log::Info,nowString);
+    log.log(0,Log::Info,"current time:" + nowString);
 
     vector<string> args(argv,argv+argc);
     for (unsigned int i=0;i<args.size();i++){
