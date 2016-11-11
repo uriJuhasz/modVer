@@ -26,12 +26,12 @@ public:
 
     Char cur() {
         checkInBounds(); 
-        assert(curBufPos()>=0 && curBufPos()<buf.size()); 
+        assert(curBufPos()<buf.size()); 
         return buf[curBufPos()];
     }
     void next(){
         checkInBounds();
-        assert(curBufPos()>=0 && curBufPos()<buf.size()); 
+        assert(curBufPos()<buf.size()); 
         if (isEOL(cur())){
             curTextPos().row++;
             curTextPos().col=0;
@@ -40,16 +40,32 @@ public:
         }
         curBufPos()++;
     }
-    TextPos curPos(){return curTextPos;}
+    TextPos curPos(){return curTextPos();}
     
     class ContextHolder{ 
         friend class ParserBase;
+        ~ContextHolder(){}
+        void popAccept(){ 
+            assert(canPop());
+            auto p = b.posStack.top();
+            b.posStack.pop();
+            d=-1;
+            b.posStack.top()=p;
+        }
+        void popReject(){ 
+            assert(canPop());
+            b.posStack.pop();
+            d=-1;
+        }
         private: 
-            ContextHolder(ParserBase& _b) : b(_b){}
+            ContextHolder(ParserBase& _b, int _d) : b(_b), d(_d){assert(d>0);}
             ParserBase& b;
+            int d;
+            bool canPop(){return d>0 && (int)b.posStack.size()==d;}
     };
     ContextHolder pushNewContext(){
-        
+        posStack.push(posStack.top());
+        return ContextHolder(*this,posStack.size());
     }
     
     bool isEOL(Char c){return c=='\n';}
@@ -61,7 +77,8 @@ private:
     typedef unsigned int BufPos;
     class PosPair{ 
     public: 
-        PosPair(BufPos _bufPos,TextPos _textPos) : bufPos(_bufPos), textPos(_textPos){}
+        PosPair(BufPos _bufPos,TextPos _textPos) 
+            : bufPos(_bufPos), textPos(_textPos){}
         BufPos bufPos; 
         TextPos textPos;
     };
