@@ -1,12 +1,14 @@
 #ifndef PARSERBASE_H_INCLUDED
 #define PARSERBASE_H_INCLUDED
 
-#include "Pos.h"
+#include "TextPos.h"
 #include <istream>
+#include <vector>
 
-using std::istream;
 
 namespace parser{
+using std::istream;
+using std::vector;
 
 class ParserBase{
 public:
@@ -17,13 +19,17 @@ public:
 
     virtual Char cur();
     virtual Char get();
-    virtual Pos curPos();
+    virtual TextPos curPos();
     virtual void pushPos();
     virtual void dropPos();
     virtual void popPos();
+    
+    class ContextHolder{ private:ParserBase& b;};
+    class PosPair{private:BufPos bufPos; TextPos textPos;};
 private:
-    istream& input;
-    vector<Char> buf;
+    typedef int BufPos;
+    string buf;
+    int bufPos = 0;
 };
 
 }

@@ -1,13 +1,13 @@
-#include "parser/Pos.h"
+#include "parser/TextPos.h"
 
 namespace parser {
 
-Pos::Pos()
+TextPos::TextPos()
 {
     //ctor
 }
 
-Pos::~Pos()
+TextPos::~TextPos()
 {
     //dtor
 }
