@@ -19,7 +19,9 @@ public:
     typedef char Char;
     typedef std::string String;
     
-    ParserBase(const String& _in) : buf(_in){
+    void start(const String& _in){
+        buf = _in;
+        assert(posStack.empty());
         posStack.push(PosPair(0,TextPos(0,0)));
     }
     virtual ~ParserBase(){}
@@ -90,7 +92,7 @@ private:
     };
     std::stack<PosPair> posStack;
 
-    const String buf;
+    String buf;
     
     inline BufPos&  curBufPos(){return posStack.top().bufPos;}
     inline TextPos& curTextPos(){return posStack.top().textPos;}
