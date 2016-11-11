@@ -40,22 +40,28 @@ public:
         }
         curBufPos()++;
     }
-    TextPos curPos(){return curTextPos();}
+    TextPos curPos()const{return curTextPos();}
     
     class ContextHolder{ 
         friend class ParserBase;
-        ~ContextHolder(){}
+        ~ContextHolder(){
+            if (canPop())
+                popReject();
+            assert(!canPop());
+        }
         void popAccept(){ 
             assert(canPop());
             auto p = b.posStack.top();
             b.posStack.pop();
             d=-1;
             b.posStack.top()=p;
+            assert(!canPop());
         }
         void popReject(){ 
             assert(canPop());
             b.posStack.pop();
             d=-1;
+            assert(!canPop());
         }
         private: 
             ContextHolder(ParserBase& _b, int _d) : b(_b), d(_d){assert(d>0);}
@@ -88,8 +94,10 @@ private:
     
     inline BufPos&  curBufPos(){return posStack.top().bufPos;}
     inline TextPos& curTextPos(){return posStack.top().textPos;}
+    inline const BufPos&  curBufPos()const {return posStack.top().bufPos;}
+    inline const TextPos& curTextPos()const {return posStack.top().textPos;}
     
-    void checkInBounds(){
+    void checkInBounds()const{
         if (curBufPos()>=buf.size())
             throw new ReadPastEndException();
     }
