@@ -1,7 +1,7 @@
 #include "parser/ParserBase.h"
 
 namespace parser {
-    typedef ParserBase::Char Char;
+/*    typedef ParserBase::Char Char;
     ParserBase::ParserBase(istream& _input)
         : input(_input)
     {}
@@ -21,5 +21,5 @@ namespace parser {
         Char c;
         auto r = istream.get(&c);
         
-    }
+    }*/
 }

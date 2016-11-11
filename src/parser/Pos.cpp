@@ -2,14 +2,5 @@
 
 namespace parser {
 
-TextPos::TextPos()
-{
-    //ctor
-}
-
-TextPos::~TextPos()
-{
-    //dtor
-}
 
 } // namespace parser

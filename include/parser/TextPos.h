@@ -5,11 +5,11 @@ namespace parser{
 
 class TextPos{
     public:
+        typedef int Int;
         TextPos(Int _row,Int _col) : row(_row), col(_col){};
         ~TextPos(){};
-        typedef int Int;
-        const Int row;
-        const Int col;
+        Int row;
+        Int col;
     
     protected:
 
