@@ -1,5 +1,5 @@
 #include "Tokenizer.h"
-
+/*
 namespace parser
 {
 
@@ -42,4 +42,4 @@ bool isKeywordOrIdentifierStart(Char c){
     return ctype<Char>::alpha(c) || identifierChars.has(c);
 }
 
-}}
+}}*/

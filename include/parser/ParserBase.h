@@ -46,21 +46,7 @@ public:
     TextPos curPos()const{return curTextPos();}
     
     class ContextHolder{ 
-    private:
-        ContextHolder(ParserBase& _base,int _d )
-        : base(_b),d(_d){}
-        
-        void accept(){
-            
-        }
-        ~ContextHolder(){
-            if (d==-1)
-        }
-        
-        ParserBase& b;
-        int d;
-    }
-        friend class ParserBase;
+    public:
         ~ContextHolder(){
             if (canPop())
                 popReject();
@@ -80,7 +66,9 @@ public:
             d=-1;
             assert(!canPop());
         }
-        private: 
+    private:
+   
+        friend class ParserBase;
             ContextHolder(ParserBase& _b, int _d) : b(_b), d(_d){assert(d>0);}
             ParserBase& b;
             int d;
