@@ -10,6 +10,7 @@ namespace parser
 namespace boogie
 {
 
+using common::Char;
 using common::Integer;
 using common::Boolean;
 using common::String;
@@ -175,8 +176,14 @@ public:
 private:
     class NoToken : public Token{ public:NoToken() : Token(Token::Kind::noToken){}};
     Token pCurToken = NoToken();
+    
     void skipSpaces();
     
+    void nextKeywordOrIdentifier();
+    void nextQuotedIdentifier();
+    void nextIntegerOrBVLit();
+    void nextStringLiteral();
+    void nextOperator();
 };
 
 }

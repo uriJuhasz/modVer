@@ -3,11 +3,12 @@
 #include <string>
 
 namespace common{
+    typedef wchar_t     Char;
     typedef long int    Integer;
     typedef long double Rational;
     typedef bool        Boolean;
-    typedef std::string String;
-    typedef std::string ID;
+    typedef std::wstring String;
+    typedef std::wstring ID;
 }
 
 #endif

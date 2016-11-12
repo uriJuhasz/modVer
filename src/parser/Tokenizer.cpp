@@ -26,13 +26,20 @@ void Tokenizer::nextToken()
     Char c = cur();
     if (isKeywordOrIdentifierStart(c))
         nextKeywordOrIdentifier();
-    else if (isIdentifierStart(c))
-        nextIdentifier();
     else if (isQuotedIdentifierStart(c))
         nextQuotedIdentifier();
     else if (isIntegerStart(c))
         nextIntegerOrBVLit();
-    throw new UnknownCharacterException(c);
+    else if (isStringLiteralStart(c))
+        nextStringLiteral();
+    else 
+        nextOperator();
+}
+
+const set<Char> identifierChars = {'_','.','$','#','\'','`','~','^','\\','?'};
+
+bool isKeywordOrIdentifierStart(Char c){
+    return ctype<Char>::alpha(c) || identifierChars.has(c);
 }
 
 }}

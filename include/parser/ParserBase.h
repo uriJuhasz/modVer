@@ -2,6 +2,7 @@
 #define PARSERBASE_H_INCLUDED
 
 #include "TextPos.h"
+#include "common/data_types.h"
 #include <string>
 #include <cassert>
 #include <exception>
@@ -16,7 +17,7 @@ class ParserBase{
 public:
     class Exception : public exception{};
     class ReadPastEndException : public Exception{};
-    typedef char Char;
+    typedef common::Char Char;
     typedef std::string String;
     
     void start(const String& _in){
@@ -45,6 +46,20 @@ public:
     TextPos curPos()const{return curTextPos();}
     
     class ContextHolder{ 
+    private:
+        ContextHolder(ParserBase& _base,int _d )
+        : base(_b),d(_d){}
+        
+        void accept(){
+            
+        }
+        ~ContextHolder(){
+            if (d==-1)
+        }
+        
+        ParserBase& b;
+        int d;
+    }
         friend class ParserBase;
         ~ContextHolder(){
             if (canPop())
@@ -77,6 +92,7 @@ public:
     }
     
     bool isEOL(Char c){return c=='\n';}
+    bool isEOL(){return curBufPos()<buf.size();}
 private:
     void pushPos();
     void dropPos();
