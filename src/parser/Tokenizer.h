@@ -109,6 +109,8 @@ class Token{
         intLit,
         stringLit,
         bvLit,
+        
+        noToken
     };
     enum Kind kind;
     protected: Token(Kind _kind) : kind(_kind){}
@@ -158,9 +160,23 @@ public:
 class Tokenizer : protected ParserBase
 {
 public:
+    class Exception : public ParserBase::Exception{};
+    class UnknownCharacterException : public Exception{ 
+        public:UnknownCharacterException(Char _c) : c(_c) {}
+        Char c;
+    };
     Tokenizer();
     ~Tokenizer();
 
+    Token curToken();
+    void nextToken();
+    
+    void reset(){pCurToken = NoToken();}
+private:
+    class NoToken : public Token{ public:NoToken() : Token(Token::Kind::noToken){}};
+    Token pCurToken = NoToken();
+    void skipSpaces();
+    
 };
 
 }
