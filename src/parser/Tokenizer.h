@@ -1,19 +1,15 @@
 #ifndef TOKENIZER_H
 #define TOKENIZER_H
 
-<<<<<<< HEAD
 #include "common/data_types.h"
 #include "parser/ParserBase.h"
 
-=======
->>>>>>> 9170b7855fff4b2b5b484d2d7f28c0d56793c663
 namespace parser
 {
 
 namespace boogie
 {
 
-<<<<<<< HEAD
 using common::Integer;
 using common::Boolean;
 using common::String;
@@ -159,17 +155,12 @@ public:
 //class BooleanLiteralToken : public LiteralToken{ public: Boolean value;}
 //class RationalLiteralToken : public LiteralToken{ Rational value;}
 
-=======
->>>>>>> 9170b7855fff4b2b5b484d2d7f28c0d56793c663
 class Tokenizer : protected ParserBase
 {
 public:
     Tokenizer();
     ~Tokenizer();
-<<<<<<< HEAD
-=======
 
->>>>>>> 9170b7855fff4b2b5b484d2d7f28c0d56793c663
 };
 
 }
