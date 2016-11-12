@@ -3,6 +3,10 @@
 namespace frontend{
 namespace boogie{
 namespace parser{
+    
+using common::String;
+using common::Char;
+
 Parser::Parser()
 {
 }
@@ -14,10 +18,10 @@ Parser::~Parser()
 
 AST::Program Parser::parse(const String& in)
 {
-    start(s);
+    start(in);
     skipSpaces();
-    while (!isEnd()){
-        if (tryParse("type"))
+    while (!isEOL()){
+        if (tryParseKW("type"))
             parseTypeDeclaration();
         else if (tryParseKW("const"))
             parseConstantDeclaration();
@@ -37,13 +41,24 @@ AST::Program Parser::parse(const String& in)
 }
 
 
-AST::Program Parser::tryParseKW(const String& pattern){
-    try{
-        ContextHolder ch = pushNewContext();
-        auto i = 0;
-        while (!isEOL() && i<pattern.size() && cur()==pattern[i])
-            next();
-        if (!isEOL() && isIdentifierChar(cur()))
+bool isIdentifierChar(Char c){}
+
+bool Parser::tryParseKW(const String& pattern){
+    ContextHolder ch = pushNewContext();
+    auto i = 0;
+    while (!isEOL() && i<pattern.size() && cur()==pattern[i])
+        next();
+    if (!isEOL() && isIdentifierChar(cur())){
+        ch.popReject();
+        return false;
+    }else{
+        ch.popAccept();
+        return true;
     }
         
 }
+
+
+}//namespace parser
+}//namespace boogie
+}//namespace frontend
