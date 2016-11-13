@@ -61,6 +61,19 @@ bool Parser::tryParseKW(const String& pattern){
     }
 }
 
+void Parser::parseTypeDeclaration(){
+    skipUntil(';');
+}
+void Parser::parseConstDeclaration(){
+    skipUntil(';');
+}
+void Parser::parseVarDeclaration(){
+    skipUntil(';');
+}
+void Parser::parseVarDeclaration(){
+    skipUntil(';');
+}
+
 
 }//namespace parser
 }//namespace boogie

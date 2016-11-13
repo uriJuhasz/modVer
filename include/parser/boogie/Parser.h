@@ -20,6 +20,9 @@ public:
 private:
     const String* input;
     void skipSpaces();
+    void skipUntil(Char c);
+    void skipUntil(const class std::set<Char>&);
+    
     bool tryParseKW(const String& pattern);
     void parseTypeDeclaration();
     void parseConstantDeclaration();
