@@ -1,7 +1,7 @@
 
 
-#if !defined(COCO_SCANNER_H__)
-#define COCO_SCANNER_H__
+#if !defined(frontend__boogie_COCO_SCANNER_H__)
+#define frontend__boogie_COCO_SCANNER_H__
 
 #include <limits.h>
 #include <stdio.h>
@@ -32,6 +32,8 @@
 #define COCO_HEAP_BLOCK_SIZE (64*1024)
 #define COCO_CPP_NAMESPACE_SEPARATOR L':'
 
+namespace frontend {
+namespace boogie {
 
 
 // string handling, wide character
@@ -256,6 +258,8 @@ public:
 
 }; // end Scanner
 
+} // namespace
+} // namespace
 
 
 #endif

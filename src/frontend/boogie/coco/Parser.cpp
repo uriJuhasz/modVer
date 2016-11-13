@@ -1,10 +1,12 @@
-
+#ifdef FALSE1
 
 #include <wchar.h>
 #include "Parser.h"
 #include "Scanner.h"
 
 
+namespace frontend {
+namespace boogie {
 
 
 void Parser::SynErr(int n) {
@@ -2260,4 +2262,7 @@ void Errors::Exception(const wchar_t* s) {
 	exit(1);
 }
 
+} // namespace
+} // namespace
 
+#endif FALSE1

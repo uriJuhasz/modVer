@@ -1,17 +1,26 @@
 
 
-#if !defined(COCO_PARSER_H__)
-#define COCO_PARSER_H__
+#if !defined(frontend__boogie_COCO_PARSER_H__)
+#define frontend__boogie_COCO_PARSER_H__
 
 #include <set>
 #include <vector>
+#include <list>
+#include <memory>
+#include <string>
 #include "frontend/boogie/AST.h"
 using std::set;
 using std::vector;
+using std::list;
+using std::unique_ptr;
+using std::string;
+using namespace frontend::boogie::AST;
 
 
 #include "Scanner.h"
 
+namespace frontend {
+namespace boogie {
 
 
 class Errors {
@@ -59,102 +68,63 @@ public:
 	Token *t;			// last recognized token
 	Token *la;			// lookahead token
 
-readonly Program/*!*/ Pgm;
+Program program;
 
-readonly Expr/*!*/ dummyExpr;
-readonly Cmd/*!*/ dummyCmd;
-readonly Block/*!*/ dummyBlock;
-readonly Bpl.Type/*!*/ dummyType;
-readonly List<Expr>/*!*/ dummyExprSeq;
-readonly TransferCmd/*!*/ dummyTransferCmd;
-readonly StructuredCmd/*!*/ dummyStructuredCmd;
+//Return num errors
+static int Parse (const string& s, unique_ptr<Program> result, bool useBaseName=false) {
 
-///<summary>
-///Returns the number of parsing errors encountered.  If 0, "program" returns as
-///the parsed program.
-///</summary>
-public static int Parse (string/*!*/ filename, /*maybe null*/ List<string/*!*/> defines, out /*maybe null*/ Program program, bool useBaseName=false) /* throws System.IO.IOException */ {
-  Contract.Requires(filename != null);
-  Contract.Requires(cce.NonNullElements(defines,true));
+    auto buf = s.c_str();
+    auto len = s.size();
+    Errors errors = new Errors();
+    auto scanner = new Scanner(buf,len);
 
-  if (defines == null) {
-    defines = new List<string/*!*/>();
-  }
-
-  if (filename == "stdin.bpl") {
-    var s = ParserHelper.Fill(Console.In, defines);
-    return Parse(s, filename, out program, useBaseName);
-  } else {
-    FileStream stream = new FileStream(filename, FileMode.Open, FileAccess.Read, FileShare.Read);
-    var s = ParserHelper.Fill(stream, defines);
-    var ret = Parse(s, filename, out program, useBaseName);
-    stream.Close();
-    return ret;
-  }
+    Parser parser = new Parser(scanner, errors, false);
+    parser.Parse();
+      if (parser.errors.count == 0)
+      {
+        result = parser.program;
+        return 0;
+      }
+      else
+      {
+        result = null;
+        return parser.errors.count;
+      }
 }
 
-
-public static int Parse (string s, string/*!*/ filename, out /*maybe null*/ Program program, bool useBaseName=false) /* throws System.IO.IOException */ {
-  Contract.Requires(s != null);
-  Contract.Requires(filename != null);
-
-  byte[]/*!*/ buffer = cce.NonNull(UTF8Encoding.Default.GetBytes(s));
-  MemoryStream ms = new MemoryStream(buffer,false);
-  Errors errors = new Errors();
-  Scanner scanner = new Scanner(ms, errors, filename, useBaseName);
-
-  Parser parser = new Parser(scanner, errors, false);
-  parser.Parse();
-  if (parser.errors.count == 0)
-  {
-    program = parser.Pgm;
-    program.ProcessDatatypeConstructors();
-    return 0;
-  }
-  else
-  {
-    program = null;
-    return parser.errors.count;
-  }
-}
-
-public Parser(Scanner/*!*/ scanner, Errors/*!*/ errors, bool disambiguation)
+public:Parser(Scanner scanner, Errors/*!*/ errors, bool disambiguation)
  : this(scanner, errors)
 {
   // initialize readonly fields
   Pgm = new Program();
-  dummyExpr = new LiteralExpr(Token.NoToken, false);
-  dummyCmd = new AssumeCmd(Token.NoToken, dummyExpr);
-  dummyBlock = new Block(Token.NoToken, "dummyBlock", new List<Cmd>(), new ReturnCmd(Token.NoToken));
-  dummyType = new BasicType(Token.NoToken, SimpleType.Bool);
-  dummyExprSeq = new List<Expr> ();
-  dummyTransferCmd = new ReturnCmd(Token.NoToken);
-  dummyStructuredCmd = new BreakCmd(Token.NoToken, null);
 }
 
+/*
 // Class to represent the bounds of a bitvector expression t[a:b].
 // Objects of this class only exist during parsing and are directly
 // turned into BvExtract before they get anywhere else
 private class BvBounds : Expr {
-  public BigNum Lower;
-  public BigNum Upper;
-  public BvBounds(IToken/*!*/ tok, BigNum lower, BigNum upper)
+  public:
+    BigNum Lower;
+    BigNum Upper;
+  public BvBounds(IToken tok, BigNum lower, BigNum upper)
     : base(tok) {
     Contract.Requires(tok != null);
     this.Lower = lower;
     this.Upper = upper;
   }
-  public override Bpl.Type/*!*/ ShallowType { get {Contract.Ensures(Contract.Result<Bpl.Type>() != null); return Bpl.Type.Int; } }
-  public override void Resolve(ResolutionContext/*!*/ rc) {
+  public override Bpl.Type ShallowType { get {Contract.Ensures(Contract.Result<Bpl.Type>() != null); return Bpl.Type.Int; } }
+  public override void Resolve(ResolutionContext rc) {
     // Contract.Requires(rc != null);
     rc.Error(this, "bitvector bounds in illegal position");
   }
-  public override void Emit(TokenTextWriter/*!*/ stream,
+  public override void Emit(TokenTextWriter stream,
                             int contextBindingStrength, bool fragileContext) {
     Contract.Assert(false);throw new cce.UnreachableException();
   }
-  public override void ComputeFreeVariables(GSet<object>/*!*/ freeVars) { Contract.Assert(false);throw new cce.UnreachableException(); }
+  public override void ComputeFreeVariables(GSet<object> freeVars) { Contract.Assert(false);throw new cce.UnreachableException(); }
 }
+*/
 
 /*--------------------------------------------------------------------------*/
 
@@ -253,6 +223,8 @@ out QKeyValue kv, out Trigger trig, out Expr/*!*/ body);
 
 }; // end Parser
 
+} // namespace
+} // namespace
 
 
 #endif

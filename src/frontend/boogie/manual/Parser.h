@@ -4,24 +4,29 @@
 #include "../AST.h"
 #include "../../parser/ParserBase.h"
 #include "common/data_types.h"
+#include <functional>
 
 namespace frontend{
 namespace boogie{
 namespace parser{
 using common::String;
+using AST::Program;
+using std::string;
 
 class Parser : protected ::parser::ParserBase
 {
 public:
+    class MLCommentException : public Exception{};
+    class SkipException : public Exception{};
+    class StringLiterlExceedsLineException : public Exception{};
+    class StringLiterlExceedsFileException : public Exception{};
+    class LexException : public Exception{};
+    
     Parser();
     ~Parser();
     
-    AST::Program parse(const String& s);
+    void parse(const String& in, Program&program);
 private:
-    const String* input;
-    void skipSpaces();
-    void skipUntil(Char c);
-    void skipUntil(const class std::set<Char>&);
     
     bool tryParseKW(const String& pattern);
     void parseTypeDeclaration();
@@ -31,7 +36,27 @@ private:
     void parseAxiom();
     void parseProcedureDeclaration();
     void parseImplementation();
-};
+    
+    
+    Char skipBalancedUntil(Char end);
+    Char skipBalancedUntil(std::function<bool(Char)> isEnd);
+    bool tryEatBalanced();
+    
+    bool tryLex(const string& s);
+    bool lex(const string& s);
+    void skipSpaces();
+    bool lexStringLiteral();
+    bool tryEatStringLiteral();
+    bool eatComments();
+    bool eatCommentsAndStrings();
+    bool tryEatComment();
+    bool lexSingleLineComment();
+    bool lexMultiLineComment();
+    void skipUntil(Char c);
+    void skipUntil(const class std::set<Char>&);
+    
+    const String* input;
+};//class Parser
 
 }//namespace parser
 }//namespace boogie

@@ -27,10 +27,18 @@ public:
     }
     virtual ~ParserBase(){}
 
+    bool has(int n){assert(n>=0); return curBufPos()+n <= buf.size();}
+    Char peek(int n){
+        assert(has(n)); 
+        auto i = curBufPos()+n;
+        assert(i<buf.size());
+        return buf[i];
+    }
     Char cur() {
-        checkInBounds(); 
+        return peek(0);
+/*        checkInBounds(); 
         assert(curBufPos()<buf.size()); 
-        return buf[curBufPos()];
+        return buf[curBufPos()];*/
     }
     void next(){
         checkInBounds();

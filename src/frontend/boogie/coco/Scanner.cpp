@@ -4,6 +4,8 @@
 #include <string.h>
 #include "Scanner.h"
 
+namespace frontend {
+namespace boogie {
 
 
 
@@ -1115,4 +1117,6 @@ void Scanner::ResetPeek() {
 	pt = tokens;
 }
 
+} // namespace
+} // namespace
 
