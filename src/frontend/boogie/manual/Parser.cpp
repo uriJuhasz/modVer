@@ -3,6 +3,7 @@
 #include <set>
 #include <memory>
 #include <functional>
+#include <locale>
 
 namespace frontend{
 namespace boogie{
@@ -14,6 +15,16 @@ using std::set;
 using std::unique_ptr;
 using std::function;
 using frontend::parser::ParserBase;
+using String = common::String;
+
+/*****************************************************************************
+ * Classifiers
+****************************************************************************/
+const std::set<Char> identifierExtraChars = {'_','.','$','#','\'','~','^','?'};
+const std::locale loc;
+bool isIdentifierStart(Char c){return std::use_facet< std::ctype<Char> >(loc).is(std::ctype<Char>::alpha,c) || identifierExtraChars.find(c)!=identifierExtraChars.end();}
+bool isIdentifierChar(Char c){return std::use_facet< std::ctype<Char> >(loc).is(std::ctype<Char>::digit,c) || isIdentifierStart(c);}
+
 
 class Parser : protected ParserBase
 {
@@ -33,6 +44,39 @@ private:
     void parseAxiom();
     void parseProcedureDeclaration();
     void parseImplementation();
+    
+    unique_ptr<AST::Attributes> parseAttributes(){
+        skipSpaces();
+        while (tryLex("{")){
+            skipSpaces();
+            lex(":");
+            auto id = parseIdentifier();
+            skipBalancedUntil('}');
+        
+        }
+    }
+    unique_ptr<AST::Identifier>  parseIdentifier(){
+        auto r = tryParseIdentifier();
+        if (r.get()==nullptr)
+            throw new ExpectedException("identifier");
+        return r;
+    }
+    unique_ptr<AST::Identifier>  tryParseIdentifier(){
+        common::String id;
+        if (!has(1))
+            return nullptr; 
+        if (!isIdentifierStart(cur()))
+            return nullptr;
+        id += cur();
+        next();
+        while (has(1) && isIdentifierChar(cur())){
+            id += cur();
+            next();
+        }
+        return unique_ptr<AST::Identifier>(new AST::Identifier(id));
+    }
+    unique_ptr<std::vector<AST::Identifier>> parseIdentifierSequence();
+//    unique_ptr<AST::Type> parseType();
     
     
     Char skipBalancedUntil(Char end);
@@ -90,8 +134,18 @@ void Parser::parse(const common::String& in, Program&program)
 
 
 void Parser::parseTypeDeclaration(){
+    auto attributes = parseAttributes();
+    auto finite = tryParseKW("finite");
+    auto name = parseIdentifier();
     skipUntil(';');
+/*    auto typeArgs = parseIdentifierSequence();
+    if (!finite && tryParse("=")){
+        auto synonym = parseType()
+    }
+    parse(";");*/
 }
+
+
 void Parser::parseConstantDeclaration(){
     skipUntil(';');
 }
@@ -162,9 +216,6 @@ bool Parser::tryEatBalanced(){
 }
 
 
-const std::set<Char> identifierChars = {'_','.','$','#','\'','~','^','?'};
-
-bool isIdentifierChar(Char c){return identifierChars.find(c)!=identifierChars.end();}
 
 bool Parser::tryParseKW(const String& pattern){
     ContextHolder ch = pushNewContext();

@@ -3,11 +3,14 @@
 
 #include <set>
 #include <vector>
+#include "common/data_types.h"
 
 
 namespace frontend{
 namespace boogie{
 namespace AST{
+    using common::String;
+    using String = common::String;
     class ASTNode{};
     class TypeDeclaration : public ASTNode{};
     class ConstDeclaration : public ASTNode{};
@@ -16,7 +19,14 @@ namespace AST{
     class Axiom : public ASTNode{};
     class ProcedureDeclaration : public ASTNode{};
     class Implementation : public ASTNode{};
-
+    
+    class Attributes : public ASTNode{};
+    class Identifier : public ASTNode{
+    public:
+        Identifier(const common::String& _name) 
+        : name(_name){}
+        String name;
+    };
     class Program : public ASTNode{
         std::vector<TypeDeclaration>      types;
         std::vector<ConstDeclaration>     constants;
