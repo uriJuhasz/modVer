@@ -4,6 +4,7 @@
 #include <memory>
 #include <functional>
 #include <locale>
+#include <iostream>
 
 namespace frontend{
 namespace boogie{
@@ -45,6 +46,20 @@ private:
     void parseProcedureDeclaration();
     void parseImplementation();
     
+    unique_ptr<AST::TypeArguments> parseTypeArguments(){
+        skipSpaces();
+        if (tryParseKW("<"))
+            skipBalancedUntil('>');
+        return unique_ptr<AST::TypeArguments>(new AST::TypeArguments);
+    }
+    unique_ptr<AST::ProcedureSignature> parseProcedureSignature(){
+        auto typeArgs = parseTypeArguments();
+        parseKW("(");
+        skipBalancedUntil(')');
+        
+        return unique_ptr<AST::ProcedureSignature>(new AST::ProcedureSignature);
+    }
+
     unique_ptr<AST::Attributes> parseAttributes(){
         skipSpaces();
         while (tryLex("{")){
@@ -54,6 +69,7 @@ private:
             skipBalancedUntil('}');
         
         }
+        return unique_ptr<AST::Attributes>(new AST::Attributes());
     }
     unique_ptr<AST::Identifier>  parseIdentifier(){
         auto r = tryParseIdentifier();
@@ -62,6 +78,7 @@ private:
         return r;
     }
     unique_ptr<AST::Identifier>  tryParseIdentifier(){
+        skipSpaces();
         common::String id;
         if (!has(1))
             return nullptr; 
@@ -107,12 +124,15 @@ Parser::~Parser()
 {
 }
 
-
+using std::cout;
+using std::endl;
 void Parser::parse(const common::String& in, Program&program)
 {
+    cout << "Parsing program" << endl;
     start(in);
     skipSpaces();
-    while (!isEOL()){
+    while (has(1)){
+        skipSpaces();
         if (tryParseKW("type"))
             parseTypeDeclaration();
         else if (tryParseKW("const"))
@@ -134,6 +154,7 @@ void Parser::parse(const common::String& in, Program&program)
 
 
 void Parser::parseTypeDeclaration(){
+    cout << "   Parsing type declaration" << endl;
     auto attributes = parseAttributes();
     auto finite = tryParseKW("finite");
     auto name = parseIdentifier();
@@ -160,6 +181,22 @@ void Parser::parseAxiom(){
 }
 
 void Parser::parseProcedureDeclaration(){
+    cout << "  p: Parsing procedure";
+    auto attributes = parseAttributes();
+    auto name = parseIdentifier();
+    auto typeArgs = parseTypeArgs();
+    auto signature = parseProcedureSignature();
+    auto body = !tryLex(";");
+    auto spec = parseProcedureSpec();
+    if (body)
+        parseProcedureBody();
+    cout << " " << name << endl;
+    lex("(");
+    skipBalancedUntil(')');
+    if (tryParseKW("returns")){
+        lex("(");
+        skipBalancedUntil(')');
+    }
     auto c = skipBalancedUntil([](Char c){return c=='{' || c==';';});
     if (c=='{')
         skipBalancedUntil('}');
@@ -218,11 +255,19 @@ bool Parser::tryEatBalanced(){
 
 
 bool Parser::tryParseKW(const String& pattern){
+    skipSpaces();
     ContextHolder ch = pushNewContext();
     unsigned int i = 0;
-    while (!isEOL() && i<pattern.size() && cur()==pattern[i])
-        next();
-    if (!isEOL() && isIdentifierChar(cur())){
+    if (!has(pattern.size()))
+        return false;
+    for (unsigned int i=0;i<pattern.size();i++)
+        if (cur()==pattern[i])
+            next();
+        else{
+            ch.popReject();
+            return false;
+        }
+    if (has(1) && isIdentifierChar(cur())){
         ch.popReject();
         return false;
     }else{
@@ -253,8 +298,8 @@ bool Parser::lex(const string& s){
     return true;
 }
 void Parser::skipSpaces(){
-    while (!isEOL()){
-        while (!isEOL() && isSpace(cur()))
+    while (has(1)){
+        while (has(1) && isSpace(cur()))
             next();
         if (tryLex("//"))
             lexSingleLineComment();

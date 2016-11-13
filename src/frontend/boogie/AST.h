@@ -27,6 +27,8 @@ namespace AST{
         : name(_name){}
         String name;
     };
+    class ProcedureSignature : public ASTNode{};
+    class TypeArguments : public ASTNode{};
     class Program : public ASTNode{
         std::vector<TypeDeclaration>      types;
         std::vector<ConstDeclaration>     constants;
