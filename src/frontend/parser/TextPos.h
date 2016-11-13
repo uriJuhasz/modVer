@@ -1,6 +1,7 @@
 #ifndef PARSER_TEXTPOS_H
 #define PARSER_TEXTPOS_H
 
+namespace frontend{
 namespace parser{
 
 class TextPos{
@@ -17,6 +18,6 @@ class TextPos{
     private:
 };
 
-} // namespace parser
+}} // namespace parser
 
 #endif // PARSER_TEXTPOS_H

@@ -9,18 +9,19 @@
 #include <stack>
 
 
+namespace frontend{
 namespace parser{
 using std::exception;
 
+class Exception : public exception{};
+class ReadPastEndException : public Exception{};
 
 class ParserBase{
 public:
-    class Exception : public exception{};
-    class ReadPastEndException : public Exception{};
     typedef common::Char Char;
     typedef std::string String;
     
-    void start(const String& _in){
+    void start(const common::String& _in){
         buf = _in;
         assert(posStack.empty());
         posStack.push(PosPair(0,TextPos(0,0)));
@@ -104,7 +105,7 @@ private:
     };
     std::stack<PosPair> posStack;
 
-    String buf;
+    common::String buf;
     
     inline BufPos&  curBufPos(){return posStack.top().bufPos;}
     inline TextPos& curTextPos(){return posStack.top().textPos;}
@@ -117,6 +118,6 @@ private:
     }
 };
 
-}
+}}
 
 #endif // PARSERBASE_H_INCLUDED

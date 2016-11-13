@@ -5,6 +5,7 @@
 #include <fstream>
 
 #include "common/Log.h"
+#include "frontend/boogie/manual/Parser.h"
 
 using namespace std;
 using namespace common;
@@ -17,6 +18,9 @@ string time2String(const tm& t){
     return ss.str();
 }
 
+const string boogieFileName = "C:\\work\\Slicer\\test\\Chalice\\AVLTree\\AVLTree.bpl";
+
+int parseBoogieFile(const string& fileName);
 int main(int argc, char*argv[])
 {
     cout << "Start" << endl;
@@ -30,13 +34,45 @@ int main(int argc, char*argv[])
     auto nowString = time2String(*now);
     log.log(0,Log::Info,"current time:" + nowString);
 
+    cout << "I:Command line:" << endl;
     vector<string> args(argv,argv+argc);
     for (unsigned int i=0;i<args.size();i++){
-        cout << i << ": " << args[i] << endl;
+        cout << "*I:" << i << ": " << args[i] << endl;
         i++;
     }
 
+    auto r = parseBoogieFile(boogieFileName);
+    if (r!=0)
+        log.log(0,Log::Error,"Failed to parse boogie file \"" + boogieFileName + "\"");
+    
     log.log(0,Log::Info,"Closing log");
     cout << "End" << endl;
+    return 0;
+}
+
+int parseBoogieFile(const string& boogieFileName){
+    cout << "I:Opening Boogie file \"" << boogieFileName << "\"" << endl;
+    ifstream boogieFile(boogieFileName,ios::binary);
+    if (!boogieFile.good() || !boogieFile.is_open()){
+        cerr << "Failed to open Boogie file.";
+        return 1;
+    }
+
+    
+    cout << "I:Reading file" << endl;
+    wstring input(
+        (std::istreambuf_iterator<char>(boogieFile) ),
+        (std::istreambuf_iterator<char>()));   
+        
+    if (boogieFile.bad() || boogieFile.fail()){
+        cerr << "Failed to read from Boogie file.";
+        return 2;
+    }
+    
+    cout << "I:Parsing" << endl;
+    frontend::boogie::AST::Program program;
+    frontend::boogie::parser::parse(input,program);
+    
+    cout << "I:Closing Boogie file \"" << boogieFileName << "\"" << endl;
     return 0;
 }
