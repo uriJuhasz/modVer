@@ -37,6 +37,11 @@ public:
     void parse(const common::String& in, Program&program);
 private:
     
+    void parseKW(const String& pattern){
+        auto r = tryParseKW(pattern);
+        if (!r)
+            throw new ExpectedException(pattern);
+    }
     bool tryParseKW(const String& pattern);
     void parseTypeDeclaration();
     void parseConstantDeclaration();
@@ -58,6 +63,28 @@ private:
         skipBalancedUntil(')');
         
         return unique_ptr<AST::ProcedureSignature>(new AST::ProcedureSignature);
+    }
+
+    unique_ptr<AST::ProcedureSpec> parseProcedureSpec(){
+        while (has(1)){
+            auto free = tryParseKW("free");
+            if (tryParseKW("requires"))
+                skipUntil(';');
+            else if (tryParseKW("ensures"))
+                skipUntil(';');
+            else if (tryParseKW("modifies"))
+                skipUntil(';');
+            else if (free)
+                throw new ExpectedException("requires/ensures/modifies");
+            else
+                break;
+        }
+        return unique_ptr<AST::ProcedureSpec>(new AST::ProcedureSpec());
+    }
+    unique_ptr<AST::ProcedureBody> parseProcedureBody(){
+        parseKW("{");
+        skipBalancedUntil('}');
+        return unique_ptr<AST::ProcedureBody>(new AST::ProcedureBody());
     }
 
     unique_ptr<AST::Attributes> parseAttributes(){
@@ -154,10 +181,11 @@ void Parser::parse(const common::String& in, Program&program)
 
 
 void Parser::parseTypeDeclaration(){
-    cout << "   Parsing type declaration" << endl;
+    std::wcout << "   Parsing type declaration";
     auto attributes = parseAttributes();
     auto finite = tryParseKW("finite");
-    auto name = parseIdentifier();
+    auto id = parseIdentifier();
+    std::wcout << L" \"" << id->name << "\"" << endl;
     skipUntil(';');
 /*    auto typeArgs = parseIdentifierSequence();
     if (!finite && tryParse("=")){
@@ -168,29 +196,33 @@ void Parser::parseTypeDeclaration(){
 
 
 void Parser::parseConstantDeclaration(){
+    std::wcout << "   Parsing type declaration" << endl;
     skipUntil(';');
 }
 void Parser::parseVariableDeclaration(){
+    std::wcout << "   Parsing variable declaration" << endl;
     skipUntil(';');
 }
 void Parser::parseFunctionDeclaration(){
+    std::wcout << "   Parsing function declaration" << endl;
     skipUntil(';');
 }
 void Parser::parseAxiom(){
+    std::wcout << "   Parsing axiom declaration" << endl;
     skipUntil(';');
 }
 
 void Parser::parseProcedureDeclaration(){
     cout << "  p: Parsing procedure";
     auto attributes = parseAttributes();
-    auto name = parseIdentifier();
-    auto typeArgs = parseTypeArgs();
+    auto id = parseIdentifier();
+    auto typeArgs = parseTypeArguments();
     auto signature = parseProcedureSignature();
     auto body = !tryLex(";");
     auto spec = parseProcedureSpec();
     if (body)
         parseProcedureBody();
-    cout << " " << name << endl;
+    std::wcout << " " << id->name << endl;
     lex("(");
     skipBalancedUntil(')');
     if (tryParseKW("returns")){
