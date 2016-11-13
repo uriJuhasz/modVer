@@ -1,8 +1,8 @@
 #ifndef FRONTEND_BOOGIE_PARSER_H
 #define FRONTEND_BOOGIE_PARSER_H
 
-#include "AST.h"
-#include "parser/ParserBase.h"
+#include "../AST.h"
+#include "../../parser/ParserBase.h"
 #include "common/data_types.h"
 
 namespace frontend{

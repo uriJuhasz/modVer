@@ -1,4 +1,4 @@
-#include "parser/TextPos.h"
+#include "TextPos.h"
 
 namespace parser {
 } // namespace parser

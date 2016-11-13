@@ -2,7 +2,7 @@
 #define TOKENIZER_H
 
 #include "common/data_types.h"
-#include "parser/ParserBase.h"
+#include "ParserBase.h"
 
 namespace parser
 {
