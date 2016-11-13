@@ -13,6 +13,47 @@ using common::Char;
 using std::set;
 using std::unique_ptr;
 using std::function;
+using frontend::parser::ParserBase;
+
+class Parser : protected ParserBase
+{
+public:
+    
+    Parser();
+    ~Parser();
+    
+    void parse(const common::String& in, Program&program);
+private:
+    
+    bool tryParseKW(const String& pattern);
+    void parseTypeDeclaration();
+    void parseConstantDeclaration();
+    void parseVariableDeclaration();
+    void parseFunctionDeclaration();
+    void parseAxiom();
+    void parseProcedureDeclaration();
+    void parseImplementation();
+    
+    
+    Char skipBalancedUntil(Char end);
+    Char skipBalancedUntil(std::function<bool(Char)> isEnd);
+    bool tryEatBalanced();
+    
+    bool tryLex(const string& s);
+    bool lex(const string& s);
+    void skipSpaces();
+    bool lexStringLiteral();
+    bool tryEatStringLiteral();
+    bool eatComments();
+    bool eatCommentsAndStrings();
+    bool tryEatComment();
+    bool lexSingleLineComment();
+    bool lexMultiLineComment();
+    void skipUntil(Char c);
+    void skipUntil(const class std::set<Char>&);
+    
+    const String* input;
+};//class Parser
 
 Parser::Parser()
 {
@@ -23,7 +64,7 @@ Parser::~Parser()
 }
 
 
-void Parser::parse(const String& in, Program&program)
+void Parser::parse(const common::String& in, Program&program)
 {
     start(in);
     skipSpaces();
@@ -242,6 +283,12 @@ bool Parser::eatCommentsAndStrings(){
         else
             return r;
     return r;
+}
+
+
+void parse(const common::String& input, Program& output){
+    Parser parser;
+    parser.parse(input,output);
 }
 
 }//namespace parser
