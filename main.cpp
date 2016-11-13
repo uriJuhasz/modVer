@@ -18,7 +18,7 @@ string time2String(const tm& t){
     return ss.str();
 }
 
-const string boogieFileName = "C:\\work\\Slicer\\test\\Chalice\\AVLTree\\AVLTree.bpl";
+const string boogieFileName = "test/AVLTree.bpl";
 
 int parseBoogieFile(const string& fileName);
 int main(int argc, char*argv[])
@@ -43,9 +43,10 @@ int main(int argc, char*argv[])
 
     auto r = parseBoogieFile(boogieFileName);
     if (r!=0)
-        log.log(0,Log::Error,"Failed to parse boogie file \"" + boogieFileName + "\"");
+        log.log(0,Log::Error,"Failed to parse boogie file \"" + boogieFileName + "\"\n");
     
     log.log(0,Log::Info,"Closing log");
+    std::cin.get();
     cout << "End" << endl;
     cin.get();
 u     return 0;
@@ -55,25 +56,26 @@ int parseBoogieFile(const string& boogieFileName){
     cout << "I:Opening Boogie file \"" << boogieFileName << "\"" << endl;
     ifstream boogieFile(boogieFileName,ios::binary);
     if (!boogieFile.good() || !boogieFile.is_open()){
-        cerr << "Failed to open Boogie file.";
+        cerr << "E:Failed to open Boogie file." << endl;
         return 1;
     }
 
     
-    cout << "I:Reading file" << endl;
+    cout << "I: Reading file" << endl;
     wstring input(
         (std::istreambuf_iterator<char>(boogieFile) ),
         (std::istreambuf_iterator<char>()));   
+    cout << "  I: Total " << input.size() << " bytes" << endl;
         
     if (boogieFile.bad() || boogieFile.fail()){
-        cerr << "Failed to read from Boogie file.";
+        cerr << "E: Failed to read from Boogie file." << endl;
         return 2;
     }
     
-    cout << "I:Parsing" << endl;
+    cout << "I: Parsing" << endl;
     frontend::boogie::AST::Program program;
     frontend::boogie::parser::parse(input,program);
     
-    cout << "I:Closing Boogie file \"" << boogieFileName << "\"" << endl;
+    cout << "I: Closing Boogie file \"" << boogieFileName << "\"" << endl;
     return 0;
 }

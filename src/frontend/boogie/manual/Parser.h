@@ -19,6 +19,7 @@ class SkipException : public Exception{};
 class StringLiterlExceedsLineException : public Exception{};
 class StringLiterlExceedsFileException : public Exception{};
 class LexException : public Exception{};
+class ExpectedException : public Exception{public:ExpectedException(const string& _what) : what(_what){};string what;};
 
 void parse(const common::String& input, Program& output);
 
