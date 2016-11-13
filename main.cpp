@@ -47,7 +47,8 @@ int main(int argc, char*argv[])
     
     log.log(0,Log::Info,"Closing log");
     cout << "End" << endl;
-    return 0;
+    cin.get();
+u     return 0;
 }
 
 int parseBoogieFile(const string& boogieFileName){
