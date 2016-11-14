@@ -6,7 +6,7 @@ SET(CMAKE_CXX_FLAGS "-std=c++14 -pedantic -Wall")
 
 list(APPEND SRC_LIST src/common/Log.cpp )
 list(APPEND SRC_LIST src/frontend/parser/ParserBase.cpp src/frontend/parser/TextPos.cpp)
-list(APPEND SRC_LIST src/frontend/boogie/manual/Parser.cpp)
+list(APPEND SRC_LIST src/frontend/boogie/manual/Parser.cpp src/frontend/boogie/AST.h)
 list(APPEND SRC_LIST test/AVLTree.bpl)
 
 aux_source_directory(. SRC_LIST)

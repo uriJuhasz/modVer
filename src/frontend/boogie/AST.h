@@ -12,7 +12,20 @@ namespace AST{
     using common::String;
     using String = common::String;
     class ASTNode{};
+
+    class Type : public ASTNode{};
+    class AtomicType : public Type{};
+    class IntegerType : public AtomicType{};
+    class BooleanType : public AtomicType{};
+    class BitVectorType : public AtomicType{};
+
+    class ConstructorInstanceType : public Type{};
+    class MapType : public Type{};
+
     class TypeDeclaration : public ASTNode{};
+    class TypeConstruction : public TypeDeclaration{};
+    class TypeSynonym      : public TypeDeclaration{};
+
     class ConstDeclaration : public ASTNode{};
     class VarDeclaration : public ASTNode{};
     class FunctionDeclaration : public ASTNode{};
