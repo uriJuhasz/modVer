@@ -18,7 +18,7 @@ string time2String(const tm& t){
     return ss.str();
 }
 
-const string boogieFileName = "test/AVLTree.bpl";
+const string boogieFileName = "../modVer/test/AVLTree.bpl";
 
 int parseBoogieFile(const string& fileName);
 int main(int argc, char*argv[])
@@ -76,16 +76,10 @@ int parseBoogieFile(const string& boogieFileName){
 		frontend::boogie::AST::Program program;
 		try{
 			frontend::boogie::parser::parse(input,program);
-<<<<<<< HEAD
 		}catch(frontend::parser::Exception* e){
 			cerr << "E: Parse error - " << e->message();
 		}
-=======
-		}catch(frontend::parser::Exception& e){
-			cerr << "E: Parse error - " << e.message();
-		}
 
->>>>>>> 130eb92c2ee81d25a8e6339285c2ed0fccd571d6
 		cout << "I: Closing Boogie file \"" << boogieFileName << "\"" << endl;
 		return 0;
 }
