@@ -24,7 +24,7 @@ public:
     void start(const common::String& _in){
         buf = _in;
         assert(posStack.empty());
-        posStack.push(PosPair(0,TextPos(0,0)));
+        posStack.push(PosPair(0,TextPos(1,1)));
     }
     virtual ~ParserBase(){}
 
@@ -46,7 +46,7 @@ public:
         assert(curBufPos()<buf.size()); 
         if (isEOL(cur())){
             curTextPos().row++;
-            curTextPos().col=0;
+            curTextPos().col=1;
         }else{
             curTextPos().col++;
         }
