@@ -40,7 +40,7 @@ private:
     void parseKW(const String& pattern){
         auto r = tryParseKW(pattern);
         if (!r)
-            throw new ExpectedException(pattern);
+            throw new ExpectedException(pattern,curPos());
     }
     bool tryParseKW(const String& pattern);
     void parseTypeDeclaration();
@@ -54,13 +54,13 @@ private:
     unique_ptr<AST::TypeArguments> parseTypeArguments(){
         skipSpaces();
         if (tryParseKW("<"))
-            skipBalancedUntil('>');
+            skipBalancedUntil1('>');
         return unique_ptr<AST::TypeArguments>(new AST::TypeArguments);
     }
     unique_ptr<AST::ProcedureSignature> parseProcedureSignature(){
         auto typeArgs = parseTypeArguments();
         parseKW("(");
-        skipBalancedUntil(')');
+        skipBalancedUntil1(')');
         
         return unique_ptr<AST::ProcedureSignature>(new AST::ProcedureSignature);
     }
@@ -75,7 +75,7 @@ private:
             else if (tryParseKW("modifies"))
                 skipUntil(';');
             else if (free)
-                throw new ExpectedException("requires/ensures/modifies");
+                throw new ExpectedException("requires/ensures/modifies",curPos());
             else
                 break;
         }
@@ -83,7 +83,7 @@ private:
     }
     unique_ptr<AST::ProcedureBody> parseProcedureBody(){
         parseKW("{");
-        skipBalancedUntil('}');
+        skipBalancedUntil1('}');
         return unique_ptr<AST::ProcedureBody>(new AST::ProcedureBody());
     }
 
@@ -93,7 +93,7 @@ private:
             skipSpaces();
             lex(":");
             auto id = parseIdentifier();
-            skipBalancedUntil('}');
+            skipBalancedUntil1('}');
         
         }
         return unique_ptr<AST::Attributes>(new AST::Attributes());
@@ -101,7 +101,7 @@ private:
     unique_ptr<AST::Identifier>  parseIdentifier(){
         auto r = tryParseIdentifier();
         if (r.get()==nullptr)
-            throw new ExpectedException("identifier");
+            throw new ExpectedException("identifier",curPos());
         return r;
     }
     unique_ptr<AST::Identifier>  tryParseIdentifier(){
@@ -123,8 +123,25 @@ private:
 //    unique_ptr<AST::Type> parseType();
     
     
-    Char skipBalancedUntil(Char end);
-    Char skipBalancedUntil(std::function<bool(Char)> isEnd);
+//    Char skipBalancedUntil(Char end);
+//    Char skipBalancedUntil(std::function<bool(Char)> isEnd);
+    Char skipBalancedUntil1(Char end){
+        return skipBalancedUntil([end](auto c){return c==end;});
+    }
+    Char skipBalancedUntil(function<bool(Char)> isEnd){
+    	auto startPos = curPos();
+        while (has(1)){
+            if (tryEatComment() || tryEatStringLiteral() || tryEatBalanced())
+                continue;
+            else{
+                auto c = cur();
+                next();
+                if (isEnd(c))
+                    return c;
+            }
+        }
+        throw new BPException("failed to skip",startPos);
+    }
     bool tryEatBalanced();
     
     bool tryLex(const string& s);
@@ -175,7 +192,7 @@ void Parser::parse(const common::String& in, Program&program)
         else if (tryParseKW("implementation"))
             parseImplementation();
         else
-            throw new Exception();
+            throw new ExpectedException("top level declaration",curPos());
     }
 }
 
@@ -224,14 +241,14 @@ void Parser::parseProcedureDeclaration(){
         parseProcedureBody();
     std::wcout << " " << id->name << endl;
     lex("(");
-    skipBalancedUntil(')');
+    skipBalancedUntil1(')');
     if (tryParseKW("returns")){
         lex("(");
-        skipBalancedUntil(')');
+        skipBalancedUntil1(')');
     }
     auto c = skipBalancedUntil([](Char c){return c=='{' || c==';';});
     if (c=='{')
-        skipBalancedUntil('}');
+        skipBalancedUntil1('}');
 }
 void Parser::parseImplementation(){
     skipBalancedUntil([](auto c){return c=='{';});
@@ -240,34 +257,20 @@ void Parser::parseImplementation(){
 
 
 void Parser::skipUntil(Char end){
+	auto startPos = curPos();
     while (has(1)){
         eatCommentsAndStrings();
         if (!has(1))
-            throw new SkipException();
+            throw new SkipException(end,startPos);
         Char c = cur();
         next();
         if (c==end)
             return;
     }
 }
-Char Parser::skipBalancedUntil(Char end){
-    return skipBalancedUntil([end](auto c){return c==end;});
-}
-Char Parser::skipBalancedUntil(function<bool(Char)> isEnd){
-    while (has(1)){
-        if (tryEatComment() || tryEatStringLiteral() || tryEatBalanced())
-            continue;
-        else{
-            auto c = cur();
-            next();
-            if (isEnd(c))
-                return c;
-        }
-    }
-    throw new SkipException();
-}
 bool Parser::tryEatBalanced(){
-    bool r = false;
+    auto startPos = curPos();
+	bool r = false;
     while (has(1)){
         Char end;
         if (tryLex("("))
@@ -281,7 +284,7 @@ bool Parser::tryEatBalanced(){
         r = true;
         skipBalancedUntil([end](auto c){return c==end;});
     }
-    throw new SkipException();
+    throw new BPException("failed to eat balanced",startPos);
 }
 
 
@@ -326,7 +329,7 @@ bool Parser::tryLex(const string& s){
 bool Parser::lex(const string& s){
     bool r = tryLex(s);
     if (!r)
-        throw new LexException();
+        throw new ExpectedException(s,curPos());
     return true;
 }
 void Parser::skipSpaces(){
@@ -351,7 +354,8 @@ bool Parser::lexSingleLineComment(){
     return true;
 }
 bool Parser::lexMultiLineComment(){
-    while (has(2)){
+    auto startPos = curPos();
+	while (has(2)){
         if (tryLex("/*"))
             lexMultiLineComment();
         else if (tryLex("*/"))
@@ -359,7 +363,7 @@ bool Parser::lexMultiLineComment(){
         else
             next();
     }
-    throw new MLCommentException();
+    throw new MLCommentException(startPos);
 }
 
 bool Parser::tryEatComment(){
@@ -381,17 +385,18 @@ bool Parser::tryEatStringLiteral(){
         return false;
 }
 bool Parser::lexStringLiteral(){
+	auto startPos = curPos();
     while (has(1)){
         auto c = cur();
         next();
         if (c=='"')
             return true;
         if (c=='\n' || c=='\r')
-            throw new StringLiterlExceedsLineException();
+            throw new StringLiterlExceedsLineException(startPos);
         if (c=='\\')
             lex("\"");
     }
-    throw new StringLiterlExceedsFileException();
+    throw new StringLiterlExceedsFileException(startPos);
 }
 bool Parser::eatComments(){
     bool r = false;

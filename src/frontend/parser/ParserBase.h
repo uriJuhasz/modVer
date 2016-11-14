@@ -13,8 +13,8 @@ namespace frontend{
 namespace parser{
 using std::exception;
 
-class Exception : public exception{};
-class ReadPastEndException : public Exception{};
+class Exception : public exception{public:virtual const std::string message()const =0;};
+class ReadPastEndException : public Exception{virtual const std::string message()const {return "read past end of file";}};
 
 class ParserBase{
 public:
