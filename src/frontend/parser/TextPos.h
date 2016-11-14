@@ -1,6 +1,8 @@
 #ifndef PARSER_TEXTPOS_H
 #define PARSER_TEXTPOS_H
 
+#include <string>
+
 namespace frontend{
 namespace parser{
 
@@ -12,6 +14,8 @@ class TextPos{
         ~TextPos(){};
         Int row;
         Int col;
+
+        operator std::string() const;
     
     protected:
 
