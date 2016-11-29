@@ -22,3 +22,8 @@
 /Debug/src_frontend_parser_Tokenizer.cpp.o
 /Debug/src_frontend_parser_Tokenizer.cpp.o.d
 /Default/
+/src/frontend/boogie/coco/Parser.cpp.old
+/src/frontend/boogie/coco/Parser.h.old
+/src/frontend/boogie/coco/Scanner.cpp.old
+/src/frontend/boogie/coco/Scanner.h
+/src/frontend/boogie/coco/Scanner.h.old
