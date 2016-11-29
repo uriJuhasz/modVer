@@ -95,8 +95,7 @@ constantsDef<. AST::Scope& scope .>
   
   "const"                                   (. startToken = *t; .)
   { Attributes<attributes> }
-  [ "unique"                                (. unique = true;  .)
-  ]
+  [ "unique"                                (. unique = true;  .) ]
   Identifiers<ids> ":" Type<type>
   [ OrderSpec<orderSpec> ]
   (.  for (const auto& id : ids) 
@@ -110,16 +109,14 @@ constantsDef<. AST::Scope& scope .>
 OrderSpec<. unique_ptr<ConstantOrderSpec>& orderSpec.>
 = "extends"                                                          (. orderSpec = new ConstantOrderSpec(); .) 
   [ OrderSpecParent<orderSpec> { ","  OrderSpecParent<orderSpec> } ]
-  [ "complete"                                                       (. orderSpec->ChildrenComplete = true; .) 
-  ]
+  [ "complete"                                                       (. orderSpec->ChildrenComplete = true; .) ] 
   .
 
 
 OrderSpecParent<. ConstantOrderSpec& orderSpec .>
 = (. bool unique = false;  .)
-    [ "unique"             (. unique = true; .)
-    ]
-    ident                  (. orderSpec.parents.push_back(new ConstantParent (new IdentifierExpr(t, t.val), unique)); .)
+    [ "unique"             (. unique = true; .) ]
+    ident                  (. orderSpec.parents.push_back(new ConstantParent (new IdentifierExpression(t, t.val), unique)); .)
 	.
 
 /* IdsType is used with const declarations 
@@ -137,10 +134,10 @@ IdsType<.out List<TypedIdent>/*!*/ tyds.>
   
 /*------------------------------------------------------------------------*/
 GlobalVarDefs<. Scope& scope .>
-= (. AST::Attributes attributes; .)
+= (. unique_ptr<AST::Attributes> attributes; .)
   "var"
   { Attributes<attributes> }
-  IdsTypeWheres<. true, "global variables", [attributes&,vs&]{TypedIdent tid => vs.push_back(AST::GlobalVariable(tid, attributes)) } .> ";"
+  IdsTypeWheres<. [attributes&,scope&]{TypedIdentifier tid => scope.addVariableDef( new AST::GlobalVariable(tid, attributes)) } .> ";"
   .
 
 IdsTypeWheres<. bool allowWhereClauses, const string& context, System.Action<TypedIdent> action .>

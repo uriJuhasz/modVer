@@ -41,9 +41,11 @@ namespace AST{
 				unique_ptr<Type> _type)
     		: ASTNode(_textPos), name(_id.name), type(move(_type)), attributes(move(_attributes))
     	{}
+    	virtual ~Variable(){}
     	String name;
     	unique_ptr<Type>       type;
     	unique_ptr<Attributes> attributes;
+    	virtual bool isGlobal()=0;
     };
     	class ConstantParentSpec;
     	class Constant : public Variable{
@@ -57,9 +59,26 @@ namespace AST{
 				unique_ptr<ConstantParentSpec> _parentSpec)
     			: Variable(_textPos,move(_attributes),_id,move(_type)), isUnique(_isUnique), parentSpec(move(_parentSpec))
     		{}
+    		virtual ~Constant(){}
     		bool isUnique;
     		unique_ptr<ConstantParentSpec> parentSpec;
+        	bool isGlobal(){return true;}
     	};
+        class GlobalVariable : public Variable{
+        public:
+        	GlobalVariable(
+        			const TextPosition& _textPos,
+    				unique_ptr<Attributes> _attributes,
+    				const Identifier& _id,
+    				unique_ptr<Type> _type)
+        		: Variable(_textPos,move(_attributes),_id, move(_type))
+        	{}
+        	virtual ~GlobalVariable(){}
+        	String name;
+        	unique_ptr<Type>       type;
+        	unique_ptr<Attributes> attributes;
+        	bool isGlobal(){return true;}
+        };
     class FunctionDef : public ASTNode{};
 
     class ConstantParentSpec: public ASTNode {

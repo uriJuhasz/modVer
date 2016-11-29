@@ -27,3 +27,7 @@
 /src/frontend/boogie/coco/Scanner.cpp.old
 /src/frontend/boogie/coco/Scanner.h
 /src/frontend/boogie/coco/Scanner.h.old
+/src/frontend/boogie/coco/Scanner.cpp
+/src/frontend/boogie/coco/Parser.h
+/src/frontend/boogie/coco/Parser.cpp
+/.settings/sonarlint
