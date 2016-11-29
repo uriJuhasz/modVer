@@ -1,26 +1,18 @@
 
 
-#if !defined(frontend__boogie_COCO_PARSER_H__)
-#define frontend__boogie_COCO_PARSER_H__
+#if !defined(frontend__boogie__parser_COCO_PARSER_H__)
+#define frontend__boogie__parser_COCO_PARSER_H__
 
-#include <set>
 #include <vector>
-#include <list>
-#include <memory>
 #include <string>
 #include "frontend/boogie/AST.h"
-using std::set;
-using std::vector;
-using std::list;
-using std::unique_ptr;
-using std::string;
-using namespace frontend::boogie::AST;
 
 
 #include "Scanner.h"
 
 namespace frontend {
 namespace boogie {
+namespace parser {
 
 
 class Errors {
@@ -69,62 +61,6 @@ public:
 	Token *la;			// lookahead token
 
 Program program;
-
-//Return num errors
-static int Parse (const string& s, unique_ptr<Program> result, bool useBaseName=false) {
-
-    auto buf = s.c_str();
-    auto len = s.size();
-    Errors errors = new Errors();
-    auto scanner = new Scanner(buf,len);
-
-    Parser parser = new Parser(scanner, errors, false);
-    parser.Parse();
-      if (parser.errors.count == 0)
-      {
-        result = parser.program;
-        return 0;
-      }
-      else
-      {
-        result = null;
-        return parser.errors.count;
-      }
-}
-
-public:Parser(Scanner scanner, Errors/*!*/ errors, bool disambiguation)
- : this(scanner, errors)
-{
-  // initialize readonly fields
-  Pgm = new Program();
-}
-
-/*
-// Class to represent the bounds of a bitvector expression t[a:b].
-// Objects of this class only exist during parsing and are directly
-// turned into BvExtract before they get anywhere else
-private class BvBounds : Expr {
-  public:
-    BigNum Lower;
-    BigNum Upper;
-  public BvBounds(IToken tok, BigNum lower, BigNum upper)
-    : base(tok) {
-    Contract.Requires(tok != null);
-    this.Lower = lower;
-    this.Upper = upper;
-  }
-  public override Bpl.Type ShallowType { get {Contract.Ensures(Contract.Result<Bpl.Type>() != null); return Bpl.Type.Int; } }
-  public override void Resolve(ResolutionContext rc) {
-    // Contract.Requires(rc != null);
-    rc.Error(this, "bitvector bounds in illegal position");
-  }
-  public override void Emit(TokenTextWriter stream,
-                            int contextBindingStrength, bool fragileContext) {
-    Contract.Assert(false);throw new cce.UnreachableException();
-  }
-  public override void ComputeFreeVariables(GSet<object> freeVars) { Contract.Assert(false);throw new cce.UnreachableException(); }
-}
-*/
 
 /*--------------------------------------------------------------------------*/
 
@@ -223,6 +159,7 @@ out QKeyValue kv, out Trigger trig, out Expr/*!*/ body);
 
 }; // end Parser
 
+} // namespace
 } // namespace
 } // namespace
 

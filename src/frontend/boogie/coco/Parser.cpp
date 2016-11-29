@@ -1,4 +1,4 @@
-#ifdef FALSE1
+
 
 #include <wchar.h>
 #include "Parser.h"
@@ -7,6 +7,7 @@
 
 namespace frontend {
 namespace boogie {
+namespace parser {
 
 
 void Parser::SynErr(int n) {
@@ -64,70 +65,50 @@ bool Parser::WeakSeparator(int n, int syFol, int repFol) {
 }
 
 void Parser::BoogiePL() {
-		list<VariableDeclaration>/*!*/ vars;
-		list<ConstantDeclaration>/*!*/ consts;
-		list<Declaration>/*!*/ ds;
-		Axiom/*!*/ ax;
-		List<Declaration/*!*/>/*!*/ ts;
-		Procedure/*!*/ pr;
+		list<Variable> vs;
+		list<FunctionDeclaration> fs;
+		Axiom ax;
+		list<TypeDefinition> ts;
+		
+		Procedure pr;
 		Implementation im;
-		Implementation/*!*/ nnim;
+		Implementation nnim;
 		
 		while (StartOf(1)) {
 			switch (la->kind) {
 			case 22 /* "const" */: {
 				Consts(out vs);
-				foreach(Bpl.Variable/*!*/ v in vs){
-				 Contract.Assert(v != null);
-				 Pgm.AddTopLevelDeclaration(v);
-				}
-				
+				for(auto v : vs) program.variables.push_back(v); 
 				break;
 			}
 			case 26 /* "function" */: {
-				Function(out ds);
-				foreach(Bpl.Declaration/*!*/ d in ds){
-				 Contract.Assert(d != null);
-				 Pgm.AddTopLevelDeclaration(d);
-				}
-				
+				Function(out fs);
+				for(auto f : fs) program.functionDeclarations.push_back(f); 
 				break;
 			}
 			case 30 /* "axiom" */: {
 				Axiom(out ax);
-				Pgm.AddTopLevelDeclaration(ax); 
+				program.axioms.push_back(ax); 
 				break;
 			}
 			case 31 /* "type" */: {
 				UserDefinedTypes(out ts);
-				foreach(Declaration/*!*/ td in ts){
-				 Contract.Assert(td != null);
-				 Pgm.AddTopLevelDeclaration(td);
-				}
-				
+				for (auto t : ts) program.types.push_back(t); 
 				break;
 			}
 			case 8 /* "var" */: {
 				GlobalVars(out vs);
-				foreach(Bpl.Variable/*!*/ v in vs){
-				 Contract.Assert(v != null);
-				 Pgm.AddTopLevelDeclaration(v);
-				}
-				
+				fpr(auto v: vs) program.variables.push_back(v); 
 				break;
 			}
 			case 33 /* "procedure" */: {
 				Procedure(out pr, out im);
-				Pgm.AddTopLevelDeclaration(pr);
-				if (im != null) {
-				  Pgm.AddTopLevelDeclaration(im);
-				}
-				
+				program.procedures.push_back(pr); if (im!=nullptr) program.implementations.push_back(im)
 				break;
 			}
 			case 34 /* "implementation" */: {
-				Implementation(out nnim);
-				Pgm.AddTopLevelDeclaration(nnim); 
+				Implementation(out im);
+				program.implementations.push_back(im); 
 				break;
 			}
 			}
@@ -2264,5 +2245,5 @@ void Errors::Exception(const wchar_t* s) {
 
 } // namespace
 } // namespace
+} // namespace
 
-#endif

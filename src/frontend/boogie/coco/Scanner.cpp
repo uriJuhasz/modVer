@@ -6,6 +6,7 @@
 
 namespace frontend {
 namespace boogie {
+namespace parser {
 
 
 
@@ -1117,6 +1118,7 @@ void Scanner::ResetPeek() {
 	pt = tokens;
 }
 
+} // namespace
 } // namespace
 } // namespace
 
