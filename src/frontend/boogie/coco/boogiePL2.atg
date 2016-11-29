@@ -4,13 +4,23 @@
 //--------------------------------------------------------------------------*/
 #include <vector>
 #include <string>
+#include <memory>
 #include "frontend/boogie/AST.h"
 
 using namespace frontend::boogie::AST;
+using std::vector;
+using std::unique_ptr;
 COMPILER BoogiePL
 
 /*--------------------------------------------------------------------------*/
 Program program;
+void parse(){
+	BoogiePL();
+} 
+
+static TextPosition toTextPos(const Token& t){ return TextPosition(t.line,t.col); } 
+
+
 
 /*--------------------------------------------------------------------------*/
 CHARACTERS
@@ -62,7 +72,7 @@ PRODUCTIONS
 
 /*------------------------------------------------------------------------*/
 BoogiePL
-= { ConstantsDef  <. program .>
+= { constantsDef  <. program .>
   | FunctionDef   <. program .>
   | Axiom         <. program .>
   | TypeDefs      <. program .>
@@ -74,21 +84,25 @@ BoogiePL
   .
 
 /*------------------------------------------------------------------------*/
-ConstantsDef<. AST::Scope& scope .>
-= (. IToken startToken; 
-	  list<Identifier> ids;
-	  Type type;
+constantsDef<. AST::Scope& scope .>
+= (. Token startToken; 
+	  vector<AST::Identifier> ids;
+	  unique_ptr<AST::Type> type;
      bool unique = false; 
-     Attributes attributes;
-     unique_ptr<ConstantOrderSpec> orderSpec;
+     unique_ptr<AST::Attributes> attributes;
+     unique_ptr<AST::ConstantOrderSpec> orderSpec;
   .)
   
-  "const"                                   (. startToken = t; .)
-  { Attribute<attributes> }
-  [ "unique" ]                              (. unique = true;  .)
+  "const"                                   (. startToken = *t; .)
+  { Attributes<attributes> }
+  [ "unique"                                (. unique = true;  .)
+  ]
   Identifiers<ids> ":" Type<type>
   [ OrderSpec<orderSpec> ]
-  (.  for (const auto& id : ids) scope.addVariableDef(new Constant(startToken, id, unique, parentSpec, attributes)); .)
+  (.  for (const auto& id : ids) 
+  			scope.addVariableDef(unique_ptr<Variable>(
+  				new AST::Constant(toTextPos(startToken), attributes->clone(), id, type->clone(),unique, orderSpec->clone() ))); 
+  .)
   ";"
   .
 
@@ -125,7 +139,7 @@ IdsType<.out List<TypedIdent>/*!*/ tyds.>
 GlobalVarDefs<. Scope& scope .>
 = (. AST::Attributes attributes; .)
   "var"
-  { Attribute<attributes> }
+  { Attributes<attributes> }
   IdsTypeWheres<. true, "global variables", [attributes&,vs&]{TypedIdent tid => vs.push_back(AST::GlobalVariable(tid, attributes)) } .> ";"
   .
 
@@ -159,7 +173,7 @@ LocalVars<.List<Variable>/*!*/ ds.>
     QKeyValue kv = null;
   .)
   "var"
-  { Attribute<ref kv> }
+  { Attributes<ref kv> }
   IdsTypeWheres<true, "local variables", delegate(TypedIdent tyd) { ds.Add(new LocalVariable(tyd.tok, tyd, kv)); } > ";"
   .
 
@@ -199,7 +213,7 @@ AttrsIdsTypeWheres<. bool allowAttributes, bool allowWhereClauses, string contex
 
 AttributesIdsTypeWhere<. bool allowAttributes, bool allowWhereClauses, string context, System.Action<TypedIdent, QKeyValue> action .>
 = (. QKeyValue kv = null; .)
-  { Attribute<ref kv>    (. if (!allowAttributes) {
+  { Attributes<ref kv>    (. if (!allowAttributes) {
                               kv = null;
                               this.SemErr("attributes are not allowed on " + context);
                             }
@@ -210,7 +224,7 @@ AttributesIdsTypeWhere<. bool allowAttributes, bool allowWhereClauses, string co
 
 
 /*------------------------------------------------------------------------*/
-Type<out Bpl.Type/*!*/ ty>
+Type<. unique_ptr<Type>& type .>
 = (.Contract.Ensures(Contract.ValueAtReturn(out ty) != null); IToken/*!*/ tok; ty = dummyType; .)
   (
     TypeAtom<out ty>
@@ -304,7 +318,7 @@ FunctionDef<. Scope& scope .>
      Expr definition = null;
      Expr/*!*/ tmp;
   .)
-  "function" { Attribute<ref kv> } Indetifier<out z>
+  "function" { Attributes<ref kv> } Indetifier<out z>
   [ TypeParams<out typeParamTok, out typeParams> ]
   "("
   [ VarOrType<out tyd, out argKv>      (. arguments.Add(new Formal(tyd.tok, tyd, true, argKv)); .)
@@ -378,7 +392,7 @@ VarOrType<out TypedIdent/*!*/ tyd, out QKeyValue kv>
     IToken/*!*/ tok;
     kv = null;
   .)
-  { Attribute<ref kv> }
+  { Attributes<ref kv> }
   Type<out ty>    (. tok = ty.tok; .)
   [ ":"           (. var uti = ty as UnresolvedTypeIdentifier;
                      if (uti != null && uti.Arguments.Count == 0) {
@@ -393,26 +407,27 @@ VarOrType<out TypedIdent/*!*/ tyd, out QKeyValue kv>
   .
 
 /*------------------------------------------------------------------------*/
-Axiom<out Axiom/*!*/ m>
+Axiom<Scope& scope /*out Axiom/*!*/ m*/>
 = (.Contract.Ensures(Contract.ValueAtReturn(out m) != null); Expr/*!*/ e; QKeyValue kv = null; .)
   "axiom"
-   { Attribute<ref kv> }
+   { Attributes<ref kv> }
    (. IToken/*!*/ x = t; .)
   Proposition<out e> ";"  (. m = new Axiom(x,e, null, kv); .)
   .
 
 /*------------------------------------------------------------------------*/
-TypeDefs<.out List<Declaration/*!*/>/*!*/ ts.>
+TypeDefs<. Scope& scope /*out List<Declaration> ts*/ .>
 = (. Contract.Ensures(cce.NonNullElements(Contract.ValueAtReturn(out ts))); Declaration/*!*/ decl; QKeyValue kv = null; ts = new List<Declaration/*!*/> (); .)
   "type"
-  { Attribute<ref kv> }
+  { Attributes<ref kv> }
   UserDefinedType<out decl, kv>          (.  ts.Add(decl);  .)
   { "," UserDefinedType<out decl, kv>    (.  ts.Add(decl);  .) }
   ";"
   .
 
 UserDefinedType<out Declaration/*!*/ decl, QKeyValue kv>
-= (. Contract.Ensures(Contract.ValueAtReturn(out decl) != null); IToken/*!*/ id; List<IToken>/*!*/ paramTokens = new List<IToken> ();
+= (. Contract.Ensures(Contract.ValueAtReturn(out decl) != null); 
+	Token/*!*/ id; List<IToken>/*!*/ paramTokens = new List<IToken> ();
      Bpl.Type/*!*/ body = dummyType; bool synonym = false; .)
   Indetifier<out id>
   [ WhiteSpaceIdentifiers<out paramTokens> ]
@@ -435,7 +450,7 @@ UserDefinedType<out Declaration/*!*/ decl, QKeyValue kv>
 
 
 /*------------------------------------------------------------------------*/
-Procedure<out Procedure/*!*/ proc, out /*maybe null*/ Implementation impl>
+Procedure<. Scope& scope .>
 = (. Contract.Ensures(Contract.ValueAtReturn(out proc) != null); IToken/*!*/ x;
      List<TypeVariable>/*!*/ typeParams;
      List<Variable>/*!*/ ins, outs;
@@ -464,7 +479,7 @@ Procedure<out Procedure/*!*/ proc, out /*maybe null*/ Implementation impl>
   .
 
 
-Implementation<out Implementation/*!*/ impl>
+Implementation<. Scope& scope .>
 = (. Contract.Ensures(Contract.ValueAtReturn(out impl) != null); IToken/*!*/ x;
      List<TypeVariable>/*!*/ typeParams;
      List<Variable>/*!*/ ins, outs;
@@ -485,7 +500,7 @@ ProcSignature<.bool allowWhereClausesOnFormals, out IToken/*!*/ name, out List<T
 = (. Contract.Ensures(Contract.ValueAtReturn(out name) != null); Contract.Ensures(Contract.ValueAtReturn(out typeParams) != null); Contract.Ensures(Contract.ValueAtReturn(out ins) != null); Contract.Ensures(Contract.ValueAtReturn(out outs) != null);
      IToken/*!*/ typeParamTok; typeParams = new List<TypeVariable>();
      outs = new List<Variable>(); kv = null; .)
-  { Attribute<ref kv> }
+  { Attributes<ref kv> }
   Indetifier<out name>
   [ TypeParams<out typeParamTok, out typeParams> ]
   ProcFormals<true, allowWhereClausesOnFormals, out ins>
@@ -510,10 +525,10 @@ Spec<.List<Requires>/*!*/ pre, List<IdentifierExpr>/*!*/ mods, List<Ensures>/*!*
 SpecPrePost<.bool free, List<Requires>/*!*/ pre, List<Ensures>/*!*/ post.>
 = (. Contract.Requires(pre != null); Contract.Requires(post != null); Expr/*!*/ e; Token tok = null; QKeyValue kv = null; .)
   ( "requires"              (. tok = t; .)
-    { Attribute<ref kv> }
+    { Attributes<ref kv> }
     Proposition<out e> ";"  (. pre.Add(new Requires(tok, free, e, null, kv)); .)
   | "ensures"               (. tok = t; .)
-    { Attribute<ref kv> }
+    { Attributes<ref kv> }
     Proposition<out e> ";"  (. post.Add(new Ensures(tok, free, e, null, kv)); .)
   )
   .
@@ -655,7 +670,7 @@ WhileCmd<out WhileCmd/*!*/ wcmd>
     [ "free"          (. isFree = true;  .)
     ]
     "invariant"
-    { Attribute<ref kv> }
+    { Attributes<ref kv> }
     Expression<out e> (. if (isFree) {
                            invariants.Add(new AssumeCmd(z, e, kv));
                          } else {
@@ -700,11 +715,11 @@ LabelOrCmd<out Cmd c, out IToken label>
   .)
   ( LabelOrAssign<out c, out label>
   | "assert"              (. x = t; .)
-    { Attribute<ref kv> }
+    { Attributes<ref kv> }
     Proposition<out e>    (. c = new AssertCmd(x, e, kv); .)
     ";"
   | "assume"              (. x = t; .)
-    { Attribute<ref kv> }
+    { Attributes<ref kv> }
     Proposition<out e>    (. c = new AssumeCmd(x, e, kv); .)
     ";"
   | "havoc"               (. x = t; .)
@@ -787,7 +802,7 @@ CallCmd<out Cmd c>
   [ "free"          (. isFree = true;  .)
   ]
   "call"                          (. x = t; .)
-  { Attribute<ref kv> }
+  { Attributes<ref kv> }
   CallParams<isAsync, isFree, kv, x, out c> (. .)
   .
 
@@ -799,7 +814,7 @@ ParCallCmd<out Cmd d>
      List<CallCmd> callCmds = new List<CallCmd>();
   .)
   "par"                          (. x = t; .)
-  { Attribute<ref kv> }
+  { Attributes<ref kv> }
   CallParams<false, false, kv, x, out c> (. callCmds.Add((CallCmd)c); .) 
   { "|" CallParams<false, false, kv, x, out c> (. callCmds.Add((CallCmd)c); .) 
   }
@@ -844,7 +859,7 @@ Proposition<out Expr/*!*/ e>
   .
 
 /*------------------------------------------------------------------------*/
-Identifiers<.out List<IToken>/*!*/ xs.>
+Identifiers<. vector<Identifier>& ids .>
 = (.Contract.Ensures(Contract.ValueAtReturn(out xs) != null); IToken/*!*/ id; xs = new List<IToken>(); .)
   Indetifier<out id>                 (. xs.Add(id); .)
   { "," Indetifier<out id>           (. xs.Add(id); .)
@@ -1211,7 +1226,7 @@ SpecBlock<out Block/*!*/ b>
   ";"
   .
 
-Attribute<ref QKeyValue kv>
+Attributes<. unique_ptr<Attributes>& .>
 = (. Trigger trig = null; .)
   AttributeOrTrigger<ref kv, ref trig> (.  if (trig != null) this.SemErr("only attributes, not triggers, allowed here"); .)
 .

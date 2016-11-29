@@ -12,9 +12,10 @@ namespace boogie{
 namespace AST{
     using common::String;
     using String = common::String;
+    using frontend::TextPosition;
+
     using std::unique_ptr;
     using std::vector;
-    using frontend::TextPosition;
 
     class ASTNode{
     public:
@@ -22,11 +23,42 @@ namespace AST{
     protected:
     	ASTNode(const TextPosition& _textPos = TextPosition::NoPos) : textPos(_textPos){}
     };
+    class Attributes;
+    class Type : public ASTNode{public:unique_ptr<Attributes> clone() const;};
+    class Identifier : public ASTNode{
+    public:
+        Identifier(const common::String& _name)
+        : name(_name){}
+        String name;
+    };
     class TypeDef  : public ASTNode{};
-    class Variable : public ASTNode{};
+    class Variable : public ASTNode{
+    public:
+    	Variable(
+    			const TextPosition& _textPos,
+				unique_ptr<Attributes> _attributes,
+				const Identifier& _id,
+				unique_ptr<Type> _type)
+    		: ASTNode(_textPos), name(_id.name), type(move(_type)), attributes(move(_attributes))
+    	{}
+    	String name;
+    	unique_ptr<Type>       type;
+    	unique_ptr<Attributes> attributes;
+    };
+    	class ConstantParentSpec;
     	class Constant : public Variable{
     	public:
-
+    		Constant(
+    			const TextPosition& _textPos,
+				unique_ptr<Attributes> _attributes,
+				const Identifier& _id,
+				unique_ptr<Type> _type,
+				bool _isUnique,
+				unique_ptr<ConstantParentSpec> _parentSpec)
+    			: Variable(_textPos,move(_attributes),_id,move(_type)), isUnique(_isUnique), parentSpec(move(_parentSpec))
+    		{}
+    		bool isUnique;
+    		unique_ptr<ConstantParentSpec> parentSpec;
     	};
     class FunctionDef : public ASTNode{};
 
@@ -39,6 +71,7 @@ namespace AST{
     	public:
     		bool ChildrenComplete = false;
     		vector<ConstantParentSpec> parents;
+    		unique_ptr<ConstantOrderSpec> clone() const;
     };
 
 
@@ -47,14 +80,7 @@ namespace AST{
     class Procedure      : public ASTNode{};
     class Implementation : public ASTNode{};
     
-    class Attributes : public ASTNode{};
-    class Identifier : public ASTNode{
-    public:
-        Identifier(const common::String& _name) 
-        : name(_name){}
-        String name;
-    };
-    class Type : public ASTNode{};
+    class Attributes : public ASTNode{public:unique_ptr<Attributes> clone() const;};
     class TypedIdentifier : public Identifier{ public: Type type; };
 
     class ProcedureSignature : public ASTNode{};
@@ -72,7 +98,7 @@ namespace AST{
     	vector<TypeDef>     typeDefs;
     	vector<FunctionDef> functions;
     };
-    class Program : public ASTNode{
+    class Program : public Scope{
     public:
     	void addAxiom(unique_ptr<Axiom> axiom);
     	void addProcedure(unique_ptr<Procedure> procedure);

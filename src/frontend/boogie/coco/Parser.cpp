@@ -65,50 +65,34 @@ bool Parser::WeakSeparator(int n, int syFol, int repFol) {
 }
 
 void Parser::BoogiePL() {
-		list<Variable> vs;
-		list<FunctionDeclaration> fs;
-		Axiom ax;
-		list<TypeDefinition> ts;
-		
-		Procedure pr;
-		Implementation im;
-		Implementation nnim;
-		
 		while (StartOf(1)) {
 			switch (la->kind) {
-			case 22 /* "const" */: {
-				Consts(out vs);
-				for(auto v : vs) program.variables.push_back(v); 
+			case 8 /* "const" */: {
+				constantsDef(program );
 				break;
 			}
 			case 26 /* "function" */: {
-				Function(out fs);
-				for(auto f : fs) program.functionDeclarations.push_back(f); 
+				FunctionDef(program );
 				break;
 			}
 			case 30 /* "axiom" */: {
-				Axiom(out ax);
-				program.axioms.push_back(ax); 
+				Axiom(program );
 				break;
 			}
 			case 31 /* "type" */: {
-				UserDefinedTypes(out ts);
-				for (auto t : ts) program.types.push_back(t); 
+				TypeDefs(program );
 				break;
 			}
-			case 8 /* "var" */: {
-				GlobalVars(out vs);
-				fpr(auto v: vs) program.variables.push_back(v); 
+			case 15 /* "var" */: {
+				GlobalVarDefs(program );
 				break;
 			}
 			case 33 /* "procedure" */: {
-				Procedure(out pr, out im);
-				program.procedures.push_back(pr); if (im!=nullptr) program.implementations.push_back(im)
+				Procedure(program );
 				break;
 			}
 			case 34 /* "implementation" */: {
-				Implementation(out im);
-				program.implementations.push_back(im); 
+				Implementation(program );
 				break;
 			}
 			}
@@ -116,52 +100,38 @@ void Parser::BoogiePL() {
 		Expect(_EOF);
 }
 
-void Parser::Consts(out List<Variable>/*!*/ ds) {
-		Contract.Ensures(Contract.ValueAtReturn(out ds) != null); IToken/*!*/ y; List<TypedIdent>/*!*/ xs;
-		ds = new List<Variable>();
-		bool u = false; QKeyValue kv = null;
-		bool ChildrenComplete = false;
-		List<ConstantParent/*!*/> Parents = null; 
-		Expect(22 /* "const" */);
-		y = t; 
+void Parser::constantsDef(AST::Scope& scope ) {
+		Token startToken; 
+		vector<AST::Identifier> ids;
+		unique_ptr<AST::Type> type;
+		bool unique = false; 
+		unique_ptr<AST::Attributes> attributes;
+		unique_ptr<AST::ConstantOrderSpec> orderSpec;
+		
+		Expect(8 /* "const" */);
+		startToken = *t; 
 		while (la->kind == 28 /* "{" */) {
-			Attribute(ref kv);
+			Attributes(attributes);
 		}
-		if (la->kind == 23 /* "unique" */) {
+		if (la->kind == 9 /* "unique" */) {
 			Get();
-			u = true;  
+			unique = true;  
 		}
-		IdsType(out xs);
-		if (la->kind == 24 /* "extends" */) {
-			OrderSpec(out ChildrenComplete, out Parents);
+		Identifiers(ids);
+		Expect(10 /* ":" */);
+		Type(type);
+		if (la->kind == 12 /* "extends" */) {
+			OrderSpec(orderSpec);
 		}
-		bool makeClone = false;
-		foreach(TypedIdent/*!*/ x in xs){
-		 Contract.Assert(x != null);
+		for (const auto& id : ids) 
+		scope.addVariableDef(unique_ptr<Variable>(
+		new AST::Constant(toTextPos(startToken), attributes->clone(), id, type->clone(),unique, orderSpec->clone() ))); 
 		
-		 // ensure that no sharing is introduced
-		 List<ConstantParent/*!*/> ParentsClone;
-		 if (makeClone && Parents != null) {
-		   ParentsClone = new List<ConstantParent/*!*/> ();
-		   foreach (ConstantParent/*!*/ p in Parents){
-		     Contract.Assert(p != null);
-		     ParentsClone.Add(new ConstantParent (
-		                      new IdentifierExpr (p.Parent.tok, p.Parent.Name),
-		                      p.Unique));}
-		 } else {
-		   ParentsClone = Parents;
-		 }
-		 makeClone = true;
-		
-		 ds.Add(new Constant(y, x, u, ParentsClone, ChildrenComplete, kv));
-		}
-		
-		Expect(9 /* ";" */);
+		Expect(11 /* ";" */);
 }
 
-void Parser::Function(out List<Declaration>/*!*/ ds) {
-		Contract.Ensures(Contract.ValueAtReturn(out ds) != null);
-		ds = new List<Declaration>(); IToken/*!*/ z;
+void Parser::FunctionDef(Scope& scope ) {
+		IToken/*!*/ z;
 		IToken/*!*/ typeParamTok;
 		var typeParams = new List<TypeVariable>();
 		var arguments = new List<Variable>();
@@ -175,13 +145,13 @@ void Parser::Function(out List<Declaration>/*!*/ ds) {
 		
 		Expect(26 /* "function" */);
 		while (la->kind == 28 /* "{" */) {
-			Attribute(ref kv);
+			Attributes(ref kv);
 		}
-		Ident(out z);
-		if (la->kind == 20 /* "<" */) {
+		Indetifier(out z);
+		if (la->kind == 24 /* "<" */) {
 			TypeParams(out typeParamTok, out typeParams);
 		}
-		Expect(10 /* "(" */);
+		Expect(17 /* "(" */);
 		if (StartOf(2)) {
 			VarOrType(out tyd, out argKv);
 			arguments.Add(new Formal(tyd.tok, tyd, true, argKv)); 
@@ -191,14 +161,14 @@ void Parser::Function(out List<Declaration>/*!*/ ds) {
 				arguments.Add(new Formal(tyd.tok, tyd, true, argKv)); 
 			}
 		}
-		Expect(11 /* ")" */);
+		Expect(18 /* ")" */);
 		argKv = null; 
 		if (la->kind == 27 /* "returns" */) {
 			Get();
-			Expect(10 /* "(" */);
+			Expect(17 /* "(" */);
 			VarOrType(out retTyd, out argKv);
-			Expect(11 /* ")" */);
-		} else if (la->kind == 12 /* ":" */) {
+			Expect(18 /* ")" */);
+		} else if (la->kind == 10 /* ":" */) {
 			Get();
 			Type(out retTy);
 			retTyd = new TypedIdent(retTy.tok, TypedIdent.NoName, retTy); 
@@ -208,7 +178,7 @@ void Parser::Function(out List<Declaration>/*!*/ ds) {
 			Expression(out tmp);
 			definition = tmp; 
 			Expect(29 /* "}" */);
-		} else if (la->kind == 9 /* ";" */) {
+		} else if (la->kind == 11 /* ";" */) {
 			Get();
 		} else SynErr(99);
 		if (retTyd == null) {
@@ -263,23 +233,23 @@ void Parser::Function(out List<Declaration>/*!*/ ds) {
 		
 }
 
-void Parser::Axiom(out Axiom/*!*/ m) {
+void Parser::Axiom(Scope& scope /*out Axiom/*!*/ m*/) {
 		Contract.Ensures(Contract.ValueAtReturn(out m) != null); Expr/*!*/ e; QKeyValue kv = null; 
 		Expect(30 /* "axiom" */);
 		while (la->kind == 28 /* "{" */) {
-			Attribute(ref kv);
+			Attributes(ref kv);
 		}
 		IToken/*!*/ x = t; 
 		Proposition(out e);
-		Expect(9 /* ";" */);
+		Expect(11 /* ";" */);
 		m = new Axiom(x,e, null, kv); 
 }
 
-void Parser::UserDefinedTypes(out List<Declaration/*!*/>/*!*/ ts) {
+void Parser::TypeDefs(Scope& scope /*out List<Declaration> ts*/ ) {
 		Contract.Ensures(cce.NonNullElements(Contract.ValueAtReturn(out ts))); Declaration/*!*/ decl; QKeyValue kv = null; ts = new List<Declaration/*!*/> (); 
 		Expect(31 /* "type" */);
 		while (la->kind == 28 /* "{" */) {
-			Attribute(ref kv);
+			Attributes(ref kv);
 		}
 		UserDefinedType(out decl, kv);
 		ts.Add(decl);  
@@ -288,24 +258,20 @@ void Parser::UserDefinedTypes(out List<Declaration/*!*/>/*!*/ ts) {
 			UserDefinedType(out decl, kv);
 			ts.Add(decl);  
 		}
-		Expect(9 /* ";" */);
+		Expect(11 /* ";" */);
 }
 
-void Parser::GlobalVars(out List<Variable>/*!*/ ds) {
-		Contract.Ensures(Contract.ValueAtReturn(out ds) != null);
-		QKeyValue kv = null;
-		ds = new List<Variable>();
-		var dsx = ds;
-		
-		Expect(8 /* "var" */);
+void Parser::GlobalVarDefs(Scope& scope ) {
+		AST::Attributes attributes; 
+		Expect(15 /* "var" */);
 		while (la->kind == 28 /* "{" */) {
-			Attribute(ref kv);
+			Attributes(attributes);
 		}
-		IdsTypeWheres(true, "global variables", delegate(TypedIdent tyd) { dsx.Add(new GlobalVariable(tyd.tok, tyd, kv)); } );
-		Expect(9 /* ";" */);
+		IdsTypeWheres(true, "global variables", [attributes&,vs&]{TypedIdent tid => vs.push_back(AST::GlobalVariable(tid, attributes)) } );
+		Expect(11 /* ";" */);
 }
 
-void Parser::Procedure(out Procedure/*!*/ proc, out /*maybe null*/ Implementation impl) {
+void Parser::Procedure(Scope& scope ) {
 		Contract.Ensures(Contract.ValueAtReturn(out proc) != null); IToken/*!*/ x;
 		List<TypeVariable>/*!*/ typeParams;
 		List<Variable>/*!*/ ins, outs;
@@ -320,7 +286,7 @@ void Parser::Procedure(out Procedure/*!*/ proc, out /*maybe null*/ Implementatio
 		
 		Expect(33 /* "procedure" */);
 		ProcSignature(true, out x, out typeParams, out ins, out outs, out kv);
-		if (la->kind == 9 /* ";" */) {
+		if (la->kind == 11 /* ";" */) {
 			Get();
 			while (StartOf(3)) {
 				Spec(pre, mods, post);
@@ -337,7 +303,7 @@ void Parser::Procedure(out Procedure/*!*/ proc, out /*maybe null*/ Implementatio
 		proc = new Procedure(x, x.val, typeParams, ins, outs, pre, mods, post, kv); 
 }
 
-void Parser::Implementation(out Implementation/*!*/ impl) {
+void Parser::Implementation(Scope& scope ) {
 		Contract.Ensures(Contract.ValueAtReturn(out impl) != null); IToken/*!*/ x;
 		List<TypeVariable>/*!*/ typeParams;
 		List<Variable>/*!*/ ins, outs;
@@ -351,13 +317,66 @@ void Parser::Implementation(out Implementation/*!*/ impl) {
 		impl = new Implementation(x, x.val, typeParams, ins, outs, locals, stmtList, kv, this.errors); 
 }
 
-void Parser::Attribute(ref QKeyValue kv) {
+void Parser::Attributes(unique_ptr<Attributes>& ) {
 		Trigger trig = null; 
 		AttributeOrTrigger(ref kv, ref trig);
 		if (trig != null) this.SemErr("only attributes, not triggers, allowed here"); 
 }
 
-void Parser::IdsTypeWheres(bool allowWhereClauses, string context, System.Action<TypedIdent> action ) {
+void Parser::Identifiers(vector<Identifier>& ids ) {
+		Contract.Ensures(Contract.ValueAtReturn(out xs) != null); IToken/*!*/ id; xs = new List<IToken>(); 
+		Indetifier(out id);
+		xs.Add(id); 
+		while (la->kind == 13 /* "," */) {
+			Get();
+			Indetifier(out id);
+			xs.Add(id); 
+		}
+}
+
+void Parser::Type(unique_ptr<Type>& type ) {
+		Contract.Ensures(Contract.ValueAtReturn(out ty) != null); IToken/*!*/ tok; ty = dummyType; 
+		if (StartOf(5)) {
+			TypeAtom(out ty);
+		} else if (la->kind == _ident) {
+			Indetifier(out tok);
+			List<Bpl.Type>/*!*/ args = new List<Bpl.Type> (); 
+			if (StartOf(6)) {
+				TypeArgs(args);
+			}
+			ty = new UnresolvedTypeIdentifier (tok, tok.val, args); 
+		} else if (la->kind == 22 /* "[" */ || la->kind == 24 /* "<" */) {
+			MapType(out ty);
+		} else SynErr(101);
+}
+
+void Parser::OrderSpec(unique_ptr<ConstantOrderSpec>& orderSpec) {
+		Expect(12 /* "extends" */);
+		orderSpec = new ConstantOrderSpec(); 
+		if (la->kind == _ident || la->kind == 9 /* "unique" */) {
+			OrderSpecParent(orderSpec);
+			while (la->kind == 13 /* "," */) {
+				Get();
+				OrderSpecParent(orderSpec);
+			}
+		}
+		if (la->kind == 14 /* "complete" */) {
+			Get();
+			orderSpec->ChildrenComplete = true; 
+		}
+}
+
+void Parser::OrderSpecParent(ConstantOrderSpec& orderSpec ) {
+		bool unique = false;  
+		if (la->kind == 9 /* "unique" */) {
+			Get();
+			unique = true; 
+		}
+		Expect(_ident);
+		orderSpec.parents.push_back(new ConstantParent (new IdentifierExpr(t, t.val), unique)); 
+}
+
+void Parser::IdsTypeWheres(bool allowWhereClauses, const string& context, System.Action<TypedIdent> action ) {
 		IdsTypeWhere(allowWhereClauses, context, action);
 		while (la->kind == 13 /* "," */) {
 			Get();
@@ -365,108 +384,12 @@ void Parser::IdsTypeWheres(bool allowWhereClauses, string context, System.Action
 		}
 }
 
-void Parser::LocalVars(List<Variable>/*!*/ ds) {
-		Contract.Ensures(Contract.ValueAtReturn(out ds) != null);
-		QKeyValue kv = null;
-		
-		Expect(8 /* "var" */);
-		while (la->kind == 28 /* "{" */) {
-			Attribute(ref kv);
-		}
-		IdsTypeWheres(true, "local variables", delegate(TypedIdent tyd) { ds.Add(new LocalVariable(tyd.tok, tyd, kv)); } );
-		Expect(9 /* ";" */);
-}
-
-void Parser::ProcFormals(bool incoming, bool allowWhereClauses, out List<Variable>/*!*/ ds) {
-		Contract.Ensures(Contract.ValueAtReturn(out ds) != null);
-		ds = new List<Variable>();
-		var dsx = ds;
-		var context = allowWhereClauses ? "procedure formals" : "the 'implementation' copies of formals";
-		
-		Expect(10 /* "(" */);
-		if (la->kind == _ident || la->kind == 28 /* "{" */) {
-			AttrsIdsTypeWheres(allowWhereClauses, allowWhereClauses, context, delegate(TypedIdent tyd, QKeyValue kv) { dsx.Add(new Formal(tyd.tok, tyd, incoming, kv)); });
-		}
-		Expect(11 /* ")" */);
-}
-
-void Parser::AttrsIdsTypeWheres(bool allowAttributes, bool allowWhereClauses, string context, System.Action<TypedIdent, QKeyValue> action ) {
-		AttributesIdsTypeWhere(allowAttributes, allowWhereClauses, context, action);
-		while (la->kind == 13 /* "," */) {
-			Get();
-			AttributesIdsTypeWhere(allowAttributes, allowWhereClauses, context, action);
-		}
-}
-
-void Parser::BoundVars(IToken/*!*/ x, out List<Variable>/*!*/ ds) {
-		Contract.Requires(x != null);
-		Contract.Ensures(Contract.ValueAtReturn(out ds) != null);
-		List<TypedIdent>/*!*/ tyds = new List<TypedIdent>();
-		ds = new List<Variable>();
-		var dsx = ds;
-		
-		AttrsIdsTypeWheres(true, false, "bound variables", delegate(TypedIdent tyd, QKeyValue kv) { dsx.Add(new BoundVariable(tyd.tok, tyd, kv)); } );
-}
-
-void Parser::IdsType(out List<TypedIdent>/*!*/ tyds) {
-		Contract.Ensures(Contract.ValueAtReturn(out tyds) != null); List<IToken>/*!*/ ids;  Bpl.Type/*!*/ ty; 
-		Idents(out ids);
-		Expect(12 /* ":" */);
-		Type(out ty);
-		tyds = new List<TypedIdent>();
-		foreach(Token/*!*/ id in ids){
-		 Contract.Assert(id != null);
-		 tyds.Add(new TypedIdent(id, id.val, ty, null));
-		}
-		
-}
-
-void Parser::Idents(out List<IToken>/*!*/ xs) {
-		Contract.Ensures(Contract.ValueAtReturn(out xs) != null); IToken/*!*/ id; xs = new List<IToken>(); 
-		Ident(out id);
-		xs.Add(id); 
-		while (la->kind == 13 /* "," */) {
-			Get();
-			Ident(out id);
-			xs.Add(id); 
-		}
-}
-
-void Parser::Type(out Bpl.Type/*!*/ ty) {
-		Contract.Ensures(Contract.ValueAtReturn(out ty) != null); IToken/*!*/ tok; ty = dummyType; 
-		if (StartOf(5)) {
-			TypeAtom(out ty);
-		} else if (la->kind == _ident) {
-			Ident(out tok);
-			List<Bpl.Type>/*!*/ args = new List<Bpl.Type> (); 
-			if (StartOf(6)) {
-				TypeArgs(args);
-			}
-			ty = new UnresolvedTypeIdentifier (tok, tok.val, args); 
-		} else if (la->kind == 18 /* "[" */ || la->kind == 20 /* "<" */) {
-			MapType(out ty);
-		} else SynErr(101);
-}
-
-void Parser::AttributesIdsTypeWhere(bool allowAttributes, bool allowWhereClauses, string context, System.Action<TypedIdent, QKeyValue> action ) {
-		QKeyValue kv = null; 
-		while (la->kind == 28 /* "{" */) {
-			Attribute(ref kv);
-			if (!allowAttributes) {
-			 kv = null;
-			 this.SemErr("attributes are not allowed on " + context);
-			}
-			
-		}
-		IdsTypeWhere(allowWhereClauses, context, delegate(TypedIdent tyd) { action(tyd, kv); });
-}
-
 void Parser::IdsTypeWhere(bool allowWhereClauses, string context, System.Action<TypedIdent> action ) {
 		List<IToken>/*!*/ ids;  Bpl.Type/*!*/ ty;  Expr wh = null;  Expr/*!*/ nne; 
-		Idents(out ids);
-		Expect(12 /* ":" */);
+		Identifiers(out ids);
+		Expect(10 /* ":" */);
 		Type(out ty);
-		if (la->kind == 14 /* "where" */) {
+		if (la->kind == 16 /* "where" */) {
 			Get();
 			Expression(out nne);
 			if (!allowWhereClauses) {
@@ -494,25 +417,81 @@ void Parser::Expression(out Expr/*!*/ e0) {
 		}
 }
 
+void Parser::LocalVars(List<Variable>/*!*/ ds) {
+		Contract.Ensures(Contract.ValueAtReturn(out ds) != null);
+		QKeyValue kv = null;
+		
+		Expect(15 /* "var" */);
+		while (la->kind == 28 /* "{" */) {
+			Attributes(ref kv);
+		}
+		IdsTypeWheres(true, "local variables", delegate(TypedIdent tyd) { ds.Add(new LocalVariable(tyd.tok, tyd, kv)); } );
+		Expect(11 /* ";" */);
+}
+
+void Parser::ProcFormals(bool incoming, bool allowWhereClauses, out List<Variable>/*!*/ ds) {
+		Contract.Ensures(Contract.ValueAtReturn(out ds) != null);
+		ds = new List<Variable>();
+		var dsx = ds;
+		var context = allowWhereClauses ? "procedure formals" : "the 'implementation' copies of formals";
+		
+		Expect(17 /* "(" */);
+		if (la->kind == _ident || la->kind == 28 /* "{" */) {
+			AttrsIdsTypeWheres(allowWhereClauses, allowWhereClauses, context, delegate(TypedIdent tyd, QKeyValue kv) { dsx.Add(new Formal(tyd.tok, tyd, incoming, kv)); });
+		}
+		Expect(18 /* ")" */);
+}
+
+void Parser::AttrsIdsTypeWheres(bool allowAttributes, bool allowWhereClauses, string context, System.Action<TypedIdent, QKeyValue> action ) {
+		AttributesIdsTypeWhere(allowAttributes, allowWhereClauses, context, action);
+		while (la->kind == 13 /* "," */) {
+			Get();
+			AttributesIdsTypeWhere(allowAttributes, allowWhereClauses, context, action);
+		}
+}
+
+void Parser::BoundVars(IToken/*!*/ x, out List<Variable>/*!*/ ds) {
+		Contract.Requires(x != null);
+		Contract.Ensures(Contract.ValueAtReturn(out ds) != null);
+		List<TypedIdent>/*!*/ tyds = new List<TypedIdent>();
+		ds = new List<Variable>();
+		var dsx = ds;
+		
+		AttrsIdsTypeWheres(true, false, "bound variables", delegate(TypedIdent tyd, QKeyValue kv) { dsx.Add(new BoundVariable(tyd.tok, tyd, kv)); } );
+}
+
+void Parser::AttributesIdsTypeWhere(bool allowAttributes, bool allowWhereClauses, string context, System.Action<TypedIdent, QKeyValue> action ) {
+		QKeyValue kv = null; 
+		while (la->kind == 28 /* "{" */) {
+			Attributes(ref kv);
+			if (!allowAttributes) {
+			kv = null;
+			this.SemErr("attributes are not allowed on " + context);
+			}
+			
+		}
+		IdsTypeWhere(allowWhereClauses, context, delegate(TypedIdent tyd) { action(tyd, kv); });
+}
+
 void Parser::TypeAtom(out Bpl.Type/*!*/ ty) {
 		Contract.Ensures(Contract.ValueAtReturn(out ty) != null); ty = dummyType; 
-		if (la->kind == 15 /* "int" */) {
+		if (la->kind == 19 /* "int" */) {
 			Get();
 			ty = new BasicType(t, SimpleType.Int); 
-		} else if (la->kind == 16 /* "real" */) {
+		} else if (la->kind == 20 /* "real" */) {
 			Get();
 			ty = new BasicType(t, SimpleType.Real); 
-		} else if (la->kind == 17 /* "bool" */) {
+		} else if (la->kind == 21 /* "bool" */) {
 			Get();
 			ty = new BasicType(t, SimpleType.Bool); 
-		} else if (la->kind == 10 /* "(" */) {
+		} else if (la->kind == 17 /* "(" */) {
 			Get();
 			Type(out ty);
-			Expect(11 /* ")" */);
+			Expect(18 /* ")" */);
 		} else SynErr(102);
 }
 
-void Parser::Ident(out IToken/*!*/ x) {
+void Parser::Indetifier(out IToken/*!*/ x) {
 		Contract.Ensures(Contract.ValueAtReturn(out x) != null);
 		Expect(_ident);
 		x = t;
@@ -530,13 +509,13 @@ void Parser::TypeArgs(List<Bpl.Type>/*!*/ ts) {
 				TypeArgs(ts);
 			}
 		} else if (la->kind == _ident) {
-			Ident(out tok);
+			Indetifier(out tok);
 			List<Bpl.Type>/*!*/ args = new List<Bpl.Type> ();
 			ts.Add(new UnresolvedTypeIdentifier (tok, tok.val, args)); 
 			if (StartOf(6)) {
 				TypeArgs(ts);
 			}
-		} else if (la->kind == 18 /* "[" */ || la->kind == 20 /* "<" */) {
+		} else if (la->kind == 22 /* "[" */ || la->kind == 24 /* "<" */) {
 			MapType(out ty);
 			ts.Add(ty); 
 		} else SynErr(103);
@@ -549,16 +528,16 @@ void Parser::MapType(out Bpl.Type/*!*/ ty) {
 		Bpl.Type/*!*/ result;
 		List<TypeVariable>/*!*/ typeParameters = new List<TypeVariable>();
 		
-		if (la->kind == 20 /* "<" */) {
+		if (la->kind == 24 /* "<" */) {
 			TypeParams(out nnTok, out typeParameters);
 			tok = nnTok; 
 		}
-		Expect(18 /* "[" */);
+		Expect(22 /* "[" */);
 		if (tok == null) tok = t;  
 		if (StartOf(6)) {
 			Types(arguments);
 		}
-		Expect(19 /* "]" */);
+		Expect(23 /* "]" */);
 		Type(out result);
 		ty = new MapType(tok, typeParameters, arguments, result);
 		
@@ -566,10 +545,10 @@ void Parser::MapType(out Bpl.Type/*!*/ ty) {
 
 void Parser::TypeParams(out IToken/*!*/ tok, out List<TypeVariable>/*!*/ typeParams) {
 		Contract.Ensures(Contract.ValueAtReturn(out tok) != null); Contract.Ensures(Contract.ValueAtReturn(out typeParams) != null); List<IToken>/*!*/ typeParamToks; 
-		Expect(20 /* "<" */);
+		Expect(24 /* "<" */);
 		tok = t;  
-		Idents(out typeParamToks);
-		Expect(21 /* ">" */);
+		Identifiers(out typeParamToks);
+		Expect(25 /* ">" */);
 		typeParams = new List<TypeVariable> ();
 		foreach(Token/*!*/ id in typeParamToks){
 		 Contract.Assert(id != null);
@@ -588,40 +567,6 @@ void Parser::Types(List<Bpl.Type>/*!*/ ts) {
 		}
 }
 
-void Parser::OrderSpec(out bool ChildrenComplete, out List<ConstantParent/*!*/> Parents) {
-		Contract.Ensures(cce.NonNullElements(Contract.ValueAtReturn(out Parents),true)); ChildrenComplete = false;
-		Parents = null;
-		bool u;
-		IToken/*!*/ parent; 
-		Expect(24 /* "extends" */);
-		Parents = new List<ConstantParent/*!*/> ();
-		u = false; 
-		if (la->kind == _ident || la->kind == 23 /* "unique" */) {
-			if (la->kind == 23 /* "unique" */) {
-				Get();
-				u = true; 
-			}
-			Ident(out parent);
-			Parents.Add(new ConstantParent (
-			           new IdentifierExpr(parent, parent.val), u)); 
-			while (la->kind == 13 /* "," */) {
-				Get();
-				u = false; 
-				if (la->kind == 23 /* "unique" */) {
-					Get();
-					u = true; 
-				}
-				Ident(out parent);
-				Parents.Add(new ConstantParent (
-				           new IdentifierExpr(parent, parent.val), u)); 
-			}
-		}
-		if (la->kind == 25 /* "complete" */) {
-			Get();
-			ChildrenComplete = true; 
-		}
-}
-
 void Parser::VarOrType(out TypedIdent/*!*/ tyd, out QKeyValue kv) {
 		Contract.Ensures(Contract.ValueAtReturn(out tyd) != null);
 		string/*!*/ varName = TypedIdent.NoName;
@@ -630,11 +575,11 @@ void Parser::VarOrType(out TypedIdent/*!*/ tyd, out QKeyValue kv) {
 		kv = null;
 		
 		while (la->kind == 28 /* "{" */) {
-			Attribute(ref kv);
+			Attributes(ref kv);
 		}
 		Type(out ty);
 		tok = ty.tok; 
-		if (la->kind == 12 /* ":" */) {
+		if (la->kind == 10 /* ":" */) {
 			Get();
 			var uti = ty as UnresolvedTypeIdentifier;
 			if (uti != null && uti.Arguments.Count == 0) {
@@ -654,11 +599,12 @@ void Parser::Proposition(out Expr/*!*/ e) {
 }
 
 void Parser::UserDefinedType(out Declaration/*!*/ decl, QKeyValue kv) {
-		Contract.Ensures(Contract.ValueAtReturn(out decl) != null); IToken/*!*/ id; List<IToken>/*!*/ paramTokens = new List<IToken> ();
+		Contract.Ensures(Contract.ValueAtReturn(out decl) != null); 
+		Token/*!*/ id; List<IToken>/*!*/ paramTokens = new List<IToken> ();
 		Bpl.Type/*!*/ body = dummyType; bool synonym = false; 
-		Ident(out id);
+		Indetifier(out id);
 		if (la->kind == _ident) {
-			WhiteSpaceIdents(out paramTokens);
+			WhiteSpaceIdentifiers(out paramTokens);
 		}
 		if (la->kind == 32 /* "=" */) {
 			Get();
@@ -677,12 +623,12 @@ void Parser::UserDefinedType(out Declaration/*!*/ decl, QKeyValue kv) {
 		
 }
 
-void Parser::WhiteSpaceIdents(out List<IToken>/*!*/ xs) {
+void Parser::WhiteSpaceIdentifiers(out List<IToken>/*!*/ xs) {
 		Contract.Ensures(Contract.ValueAtReturn(out xs) != null); IToken/*!*/ id; xs = new List<IToken>(); 
-		Ident(out id);
+		Indetifier(out id);
 		xs.Add(id); 
 		while (la->kind == _ident) {
-			Ident(out id);
+			Indetifier(out id);
 			xs.Add(id); 
 		}
 }
@@ -693,10 +639,10 @@ out List<Variable>/*!*/ ins, out List<Variable>/*!*/ outs, out QKeyValue kv) {
 		IToken/*!*/ typeParamTok; typeParams = new List<TypeVariable>();
 		outs = new List<Variable>(); kv = null; 
 		while (la->kind == 28 /* "{" */) {
-			Attribute(ref kv);
+			Attributes(ref kv);
 		}
-		Ident(out name);
-		if (la->kind == 20 /* "<" */) {
+		Indetifier(out name);
+		if (la->kind == 24 /* "<" */) {
 			TypeParams(out typeParamTok, out typeParams);
 		}
 		ProcFormals(true, allowWhereClausesOnFormals, out ins);
@@ -711,14 +657,14 @@ void Parser::Spec(List<Requires>/*!*/ pre, List<IdentifierExpr>/*!*/ mods, List<
 		if (la->kind == 35 /* "modifies" */) {
 			Get();
 			if (la->kind == _ident) {
-				Idents(out ms);
+				Identifiers(out ms);
 				foreach(IToken/*!*/ m in ms){
-				 Contract.Assert(m != null);
-				 mods.Add(new IdentifierExpr(m, m.val));
+				Contract.Assert(m != null);
+				mods.Add(new IdentifierExpr(m, m.val));
 				}
 				
 			}
-			Expect(9 /* ";" */);
+			Expect(11 /* ";" */);
 		} else if (la->kind == 36 /* "free" */) {
 			Get();
 			SpecPrePost(true, pre, post);
@@ -730,7 +676,7 @@ void Parser::Spec(List<Requires>/*!*/ pre, List<IdentifierExpr>/*!*/ mods, List<
 void Parser::ImplBody(out List<Variable>/*!*/ locals, out StmtList/*!*/ stmtList) {
 		Contract.Ensures(Contract.ValueAtReturn(out locals) != null); Contract.Ensures(Contract.ValueAtReturn(out stmtList) != null); locals = new List<Variable>(); 
 		Expect(28 /* "{" */);
-		while (la->kind == 8 /* "var" */) {
+		while (la->kind == 15 /* "var" */) {
 			LocalVars(locals);
 		}
 		StmtList(out stmtList);
@@ -742,19 +688,19 @@ void Parser::SpecPrePost(bool free, List<Requires>/*!*/ pre, List<Ensures>/*!*/ 
 			Get();
 			tok = t; 
 			while (la->kind == 28 /* "{" */) {
-				Attribute(ref kv);
+				Attributes(ref kv);
 			}
 			Proposition(out e);
-			Expect(9 /* ";" */);
+			Expect(11 /* ";" */);
 			pre.Add(new Requires(tok, free, e, null, kv)); 
 		} else if (la->kind == 38 /* "ensures" */) {
 			Get();
 			tok = t; 
 			while (la->kind == 28 /* "{" */) {
-				Attribute(ref kv);
+				Attributes(ref kv);
 			}
 			Proposition(out e);
-			Expect(9 /* ";" */);
+			Expect(11 /* ";" */);
 			post.Add(new Ensures(tok, free, e, null, kv)); 
 		} else SynErr(105);
 }
@@ -845,33 +791,33 @@ void Parser::LabelOrCmd(out Cmd c, out IToken label) {
 			Get();
 			x = t; 
 			while (la->kind == 28 /* "{" */) {
-				Attribute(ref kv);
+				Attributes(ref kv);
 			}
 			Proposition(out e);
 			c = new AssertCmd(x, e, kv); 
-			Expect(9 /* ";" */);
+			Expect(11 /* ";" */);
 			break;
 		}
 		case 48 /* "assume" */: {
 			Get();
 			x = t; 
 			while (la->kind == 28 /* "{" */) {
-				Attribute(ref kv);
+				Attributes(ref kv);
 			}
 			Proposition(out e);
 			c = new AssumeCmd(x, e, kv); 
-			Expect(9 /* ";" */);
+			Expect(11 /* ";" */);
 			break;
 		}
 		case 49 /* "havoc" */: {
 			Get();
 			x = t; 
-			Idents(out xs);
-			Expect(9 /* ";" */);
+			Identifiers(out xs);
+			Expect(11 /* ";" */);
 			ids = new List<IdentifierExpr>();
 			foreach(IToken/*!*/ y in xs){
-			 Contract.Assert(y != null);
-			 ids.Add(new IdentifierExpr(y, y.val));
+			Contract.Assert(y != null);
+			ids.Add(new IdentifierExpr(y, y.val));
 			}
 			c = new HavocCmd(x,ids);
 			
@@ -879,7 +825,7 @@ void Parser::LabelOrCmd(out Cmd c, out IToken label) {
 		}
 		case 36 /* "free" */: case 52 /* "async" */: case 53 /* "call" */: {
 			CallCmd(out cn);
-			Expect(9 /* ";" */);
+			Expect(11 /* ";" */);
 			c = cn; 
 			break;
 		}
@@ -891,7 +837,7 @@ void Parser::LabelOrCmd(out Cmd c, out IToken label) {
 		case 50 /* "yield" */: {
 			Get();
 			x = t; 
-			Expect(9 /* ";" */);
+			Expect(11 /* ";" */);
 			c = new YieldCmd(x); 
 			break;
 		}
@@ -923,17 +869,17 @@ void Parser::TransferCmd(out TransferCmd/*!*/ tc) {
 		if (la->kind == 39 /* "goto" */) {
 			Get();
 			y = t; 
-			Idents(out xs);
+			Identifiers(out xs);
 			foreach(IToken/*!*/ s in xs){
-			 Contract.Assert(s != null);
-			 ss.Add(s.val); }
+			Contract.Assert(s != null);
+			ss.Add(s.val); }
 			tc = new GotoCmd(y, ss);
 			
 		} else if (la->kind == 40 /* "return" */) {
 			Get();
 			tc = new ReturnCmd(t); 
 		} else SynErr(108);
-		Expect(9 /* ";" */);
+		Expect(11 /* ";" */);
 }
 
 void Parser::IfCmd(out IfCmd/*!*/ ifcmd) {
@@ -981,7 +927,7 @@ void Parser::WhileCmd(out WhileCmd/*!*/ wcmd) {
 			}
 			Expect(44 /* "invariant" */);
 			while (la->kind == 28 /* "{" */) {
-				Attribute(ref kv);
+				Attributes(ref kv);
 			}
 			Expression(out e);
 			if (isFree) {
@@ -991,7 +937,7 @@ void Parser::WhileCmd(out WhileCmd/*!*/ wcmd) {
 			}
 			kv = null;
 			
-			Expect(9 /* ";" */);
+			Expect(11 /* ";" */);
 		}
 		Expect(28 /* "{" */);
 		StmtList(out body);
@@ -1005,16 +951,16 @@ void Parser::BreakCmd(out BreakCmd/*!*/ bcmd) {
 		Expect(46 /* "break" */);
 		x = t; 
 		if (la->kind == _ident) {
-			Ident(out y);
+			Indetifier(out y);
 			breakLabel = y.val; 
 		}
-		Expect(9 /* ";" */);
+		Expect(11 /* ";" */);
 		bcmd = new BreakCmd(x, breakLabel); 
 }
 
 void Parser::Guard(out Expr e) {
 		Expr/*!*/ ee;  e = null; 
-		Expect(10 /* "(" */);
+		Expect(17 /* "(" */);
 		if (la->kind == 45 /* "*" */) {
 			Get();
 			e = null; 
@@ -1022,7 +968,7 @@ void Parser::Guard(out Expr e) {
 			Expression(out ee);
 			e = ee; 
 		} else SynErr(110);
-		Expect(11 /* ")" */);
+		Expect(18 /* ")" */);
 }
 
 void Parser::LabelOrAssign(out Cmd c, out IToken label) {
@@ -1033,24 +979,24 @@ void Parser::LabelOrAssign(out Cmd c, out IToken label) {
 		List<Expr/*!*/>/*!*/ rhss;
 		List<Expr/*!*/>/*!*/ indexes;
 		
-		Ident(out id);
+		Indetifier(out id);
 		x = t; 
-		if (la->kind == 12 /* ":" */) {
+		if (la->kind == 10 /* ":" */) {
 			Get();
 			c = null;  label = x; 
-		} else if (la->kind == 13 /* "," */ || la->kind == 18 /* "[" */ || la->kind == 51 /* ":=" */) {
+		} else if (la->kind == 13 /* "," */ || la->kind == 22 /* "[" */ || la->kind == 51 /* ":=" */) {
 			lhss = new List<AssignLhs/*!*/>(); 
 			lhs = new SimpleAssignLhs(id, new IdentifierExpr(id, id.val)); 
-			while (la->kind == 18 /* "[" */) {
+			while (la->kind == 22 /* "[" */) {
 				MapAssignIndex(out y, out indexes);
 				lhs = new MapAssignLhs(y, lhs, indexes); 
 			}
 			lhss.Add(lhs); 
 			while (la->kind == 13 /* "," */) {
 				Get();
-				Ident(out id);
+				Indetifier(out id);
 				lhs = new SimpleAssignLhs(id, new IdentifierExpr(id, id.val)); 
-				while (la->kind == 18 /* "[" */) {
+				while (la->kind == 22 /* "[" */) {
 					MapAssignIndex(out y, out indexes);
 					lhs = new MapAssignLhs(y, lhs, indexes); 
 				}
@@ -1066,7 +1012,7 @@ void Parser::LabelOrAssign(out Cmd c, out IToken label) {
 				Expression(out e0);
 				rhss.Add(e0); 
 			}
-			Expect(9 /* ";" */);
+			Expect(11 /* ";" */);
 			c = new AssignCmd(x, lhss, rhss); 
 		} else SynErr(111);
 }
@@ -1090,7 +1036,7 @@ void Parser::CallCmd(out Cmd c) {
 		Expect(53 /* "call" */);
 		x = t; 
 		while (la->kind == 28 /* "{" */) {
-			Attribute(ref kv);
+			Attributes(ref kv);
 		}
 		CallParams(isAsync, isFree, kv, x, out c);
 		
@@ -1106,7 +1052,7 @@ void Parser::ParCallCmd(out Cmd d) {
 		Expect(54 /* "par" */);
 		x = t; 
 		while (la->kind == 28 /* "{" */) {
-			Attribute(ref kv);
+			Attributes(ref kv);
 		}
 		CallParams(false, false, kv, x, out c);
 		callCmds.Add((CallCmd)c); 
@@ -1115,7 +1061,7 @@ void Parser::ParCallCmd(out Cmd d) {
 			CallParams(false, false, kv, x, out c);
 			callCmds.Add((CallCmd)c); 
 		}
-		Expect(9 /* ";" */);
+		Expect(11 /* ";" */);
 		d = new ParCallCmd(x, callCmds, kv); 
 }
 
@@ -1123,7 +1069,7 @@ void Parser::MapAssignIndex(out IToken/*!*/ x, out List<Expr/*!*/>/*!*/ indexes)
 		Contract.Ensures(Contract.ValueAtReturn(out x) != null); Contract.Ensures(cce.NonNullElements(Contract.ValueAtReturn(out indexes))); indexes = new List<Expr/*!*/> ();
 		Expr/*!*/ e;
 		
-		Expect(18 /* "[" */);
+		Expect(22 /* "[" */);
 		x = t; 
 		if (StartOf(9)) {
 			Expression(out e);
@@ -1134,7 +1080,7 @@ void Parser::MapAssignIndex(out IToken/*!*/ x, out List<Expr/*!*/>/*!*/ indexes)
 				indexes.Add(e); 
 			}
 		}
-		Expect(19 /* "]" */);
+		Expect(23 /* "]" */);
 }
 
 void Parser::CallParams(bool isAsync, bool isFree, QKeyValue kv, IToken x, out Cmd c) {
@@ -1145,8 +1091,8 @@ void Parser::CallParams(bool isAsync, bool isFree, QKeyValue kv, IToken x, out C
 		IToken p;
 		c = null;
 		
-		Ident(out first);
-		if (la->kind == 10 /* "(" */) {
+		Indetifier(out first);
+		if (la->kind == 17 /* "(" */) {
 			Get();
 			if (StartOf(9)) {
 				Expression(out en);
@@ -1157,23 +1103,23 @@ void Parser::CallParams(bool isAsync, bool isFree, QKeyValue kv, IToken x, out C
 					es.Add(en); 
 				}
 			}
-			Expect(11 /* ")" */);
+			Expect(18 /* ")" */);
 			c = new CallCmd(x, first.val, es, ids, kv); ((CallCmd) c).IsFree = isFree; ((CallCmd) c).IsAsync = isAsync; 
 		} else if (la->kind == 13 /* "," */ || la->kind == 51 /* ":=" */) {
 			ids.Add(new IdentifierExpr(first, first.val)); 
 			if (la->kind == 13 /* "," */) {
 				Get();
-				Ident(out p);
+				Indetifier(out p);
 				ids.Add(new IdentifierExpr(p, p.val)); 
 				while (la->kind == 13 /* "," */) {
 					Get();
-					Ident(out p);
+					Indetifier(out p);
 					ids.Add(new IdentifierExpr(p, p.val)); 
 				}
 			}
 			Expect(51 /* ":=" */);
-			Ident(out first);
-			Expect(10 /* "(" */);
+			Indetifier(out first);
+			Expect(17 /* "(" */);
 			if (StartOf(9)) {
 				Expression(out en);
 				es.Add(en); 
@@ -1183,7 +1129,7 @@ void Parser::CallParams(bool isAsync, bool isFree, QKeyValue kv, IToken x, out C
 					es.Add(en); 
 				}
 			}
-			Expect(11 /* ")" */);
+			Expect(18 /* ")" */);
 			c = new CallCmd(x, first.val, es, ids, kv); ((CallCmd) c).IsFree = isFree; ((CallCmd) c).IsAsync = isAsync; 
 		} else SynErr(112);
 }
@@ -1324,12 +1270,12 @@ void Parser::RelOp(out IToken/*!*/ x, out BinaryOperator.Opcode op) {
 			x = t; op=BinaryOperator.Opcode.Eq; 
 			break;
 		}
-		case 20 /* "<" */: {
+		case 24 /* "<" */: {
 			Get();
 			x = t; op=BinaryOperator.Opcode.Lt; 
 			break;
 		}
-		case 21 /* ">" */: {
+		case 25 /* ">" */: {
 			Get();
 			x = t; op=BinaryOperator.Opcode.Gt; 
 			break;
@@ -1465,7 +1411,7 @@ void Parser::CoercionExpression(out Expr/*!*/ e) {
 		BigNum bn;
 		
 		ArrayExpression(out e);
-		while (la->kind == 12 /* ":" */) {
+		while (la->kind == 10 /* ":" */) {
 			Get();
 			x = t; 
 			if (StartOf(6)) {
@@ -1491,7 +1437,7 @@ void Parser::ArrayExpression(out Expr/*!*/ e) {
 		List<Expr>/*!*/ allArgs = dummyExprSeq;
 		
 		AtomExpression(out e);
-		while (la->kind == 18 /* "[" */) {
+		while (la->kind == 22 /* "[" */) {
 			Get();
 			x = t; allArgs = new List<Expr> ();
 			allArgs.Add(e);
@@ -1526,7 +1472,7 @@ void Parser::ArrayExpression(out Expr/*!*/ e) {
 					allArgs.Add(e1); store = true; 
 				}
 			}
-			Expect(19 /* "]" */);
+			Expect(23 /* "]" */);
 			if (store)
 			 e = new NAryExpr(x, new MapStore(x, allArgs.Count - 2), allArgs);
 			else if (bvExtract)
@@ -1592,48 +1538,48 @@ void Parser::AtomExpression(out Expr/*!*/ e) {
 			break;
 		}
 		case _ident: {
-			Ident(out x);
+			Indetifier(out x);
 			id = new IdentifierExpr(x, x.val);  e = id; 
-			if (la->kind == 10 /* "(" */) {
+			if (la->kind == 17 /* "(" */) {
 				Get();
 				if (StartOf(9)) {
 					Expressions(out es);
 					e = new NAryExpr(x, new FunctionCall(id), es); 
-				} else if (la->kind == 11 /* ")" */) {
+				} else if (la->kind == 18 /* ")" */) {
 					e = new NAryExpr(x, new FunctionCall(id), new List<Expr>()); 
 				} else SynErr(124);
-				Expect(11 /* ")" */);
+				Expect(18 /* ")" */);
 			}
 			break;
 		}
 		case 85 /* "old" */: {
 			Get();
 			x = t; 
-			Expect(10 /* "(" */);
+			Expect(17 /* "(" */);
 			Expression(out e);
-			Expect(11 /* ")" */);
+			Expect(18 /* ")" */);
 			e = new OldExpr(x, e); 
 			break;
 		}
-		case 15 /* "int" */: {
+		case 19 /* "int" */: {
 			Get();
 			x = t; 
-			Expect(10 /* "(" */);
+			Expect(17 /* "(" */);
 			Expression(out e);
-			Expect(11 /* ")" */);
+			Expect(18 /* ")" */);
 			e = new NAryExpr(x, new ArithmeticCoercion(x, ArithmeticCoercion.CoercionType.ToInt), new List<Expr>{ e }); 
 			break;
 		}
-		case 16 /* "real" */: {
+		case 20 /* "real" */: {
 			Get();
 			x = t; 
-			Expect(10 /* "(" */);
+			Expect(17 /* "(" */);
 			Expression(out e);
-			Expect(11 /* ")" */);
+			Expect(18 /* ")" */);
 			e = new NAryExpr(x, new ArithmeticCoercion(x, ArithmeticCoercion.CoercionType.ToReal), new List<Expr>{ e }); 
 			break;
 		}
-		case 10 /* "(" */: {
+		case 17 /* "(" */: {
 			Get();
 			if (StartOf(9)) {
 				Expression(out e);
@@ -1661,7 +1607,7 @@ void Parser::AtomExpression(out Expr/*!*/ e) {
 				if (typeParams.Count + ds.Count > 0)
 				 e = new LambdaExpr(x, typeParams, ds, kv, e); 
 			} else SynErr(125);
-			Expect(11 /* ")" */);
+			Expect(18 /* ")" */);
 			break;
 		}
 		case 41 /* "if" */: {
@@ -1740,7 +1686,7 @@ out QKeyValue kv, out Trigger trig, out Expr/*!*/ body) {
 		kv = null;
 		ds = new List<Variable> ();
 		
-		if (la->kind == 20 /* "<" */) {
+		if (la->kind == 24 /* "<" */) {
 			TypeParams(out tok, out typeParams);
 			if (la->kind == _ident || la->kind == 28 /* "{" */) {
 				BoundVars(q, out ds);
@@ -1791,7 +1737,7 @@ void Parser::CodeExpression(out List<Variable>/*!*/ locals, out List<Block/*!*/>
 		blocks = new List<Block/*!*/>();
 		
 		Expect(86 /* "|{" */);
-		while (la->kind == 8 /* "var" */) {
+		while (la->kind == 15 /* "var" */) {
 			LocalVars(locals);
 		}
 		SpecBlock(out b);
@@ -1812,8 +1758,8 @@ void Parser::SpecBlock(out Block/*!*/ b) {
 		b = dummyBlock;
 		Expr/*!*/ e;
 		
-		Ident(out x);
-		Expect(12 /* ":" */);
+		Indetifier(out x);
+		Expect(10 /* ":" */);
 		while (StartOf(8)) {
 			LabelOrCmd(out c, out label);
 			if (c != null) {
@@ -1828,10 +1774,10 @@ void Parser::SpecBlock(out Block/*!*/ b) {
 		if (la->kind == 39 /* "goto" */) {
 			Get();
 			y = t; 
-			Idents(out xs);
+			Identifiers(out xs);
 			foreach(IToken/*!*/ s in xs){
-			 Contract.Assert(s != null);
-			 ss.Add(s.val); }
+			Contract.Assert(s != null);
+			ss.Add(s.val); }
 			b = new Block(x,x.val,cs,new GotoCmd(y,ss));
 			
 		} else if (la->kind == 40 /* "return" */) {
@@ -1839,7 +1785,7 @@ void Parser::SpecBlock(out Block/*!*/ b) {
 			Expression(out e);
 			b = new Block(x,x.val,cs,new ReturnExprCmd(t,e)); 
 		} else SynErr(132);
-		Expect(9 /* ";" */);
+		Expect(11 /* ";" */);
 }
 
 void Parser::AttributeOrTrigger(ref QKeyValue kv, ref Trigger trig) {
@@ -1849,7 +1795,7 @@ void Parser::AttributeOrTrigger(ref QKeyValue kv, ref Trigger trig) {
 		
 		Expect(28 /* "{" */);
 		tok = t; 
-		if (la->kind == 12 /* ":" */) {
+		if (la->kind == 10 /* ":" */) {
 			Get();
 			Expect(_ident);
 			key = t.val;  parameters = new List<object/*!*/>(); 
@@ -2039,22 +1985,22 @@ bool Parser::StartOf(int s) {
 
 	static bool set[17][99] = {
 		{T,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x},
-		{x,x,x,x, x,x,x,x, T,x,x,x, x,x,x,x, x,x,x,x, x,x,T,x, x,x,T,x, x,x,T,T, x,T,T,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x},
-		{x,T,x,x, x,x,x,x, x,x,T,x, x,x,x,T, T,T,T,x, T,x,x,x, x,x,x,x, T,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x},
+		{x,x,x,x, x,x,x,x, T,x,x,x, x,x,x,T, x,x,x,x, x,x,x,x, x,x,T,x, x,x,T,T, x,T,T,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x},
+		{x,T,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,T,x,T, T,T,T,x, T,x,x,x, T,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x},
 		{x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,T, T,T,T,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x},
 		{x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, T,x,x,x, x,x,x,T, T,T,T,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x},
-		{x,x,x,x, x,x,x,x, x,x,T,x, x,x,x,T, T,T,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x},
-		{x,T,x,x, x,x,x,x, x,x,T,x, x,x,x,T, T,T,T,x, T,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x},
+		{x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,T,x,T, T,T,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x},
+		{x,T,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,T,x,T, T,T,T,x, T,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x},
 		{x,T,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, T,x,x,T, T,T,x,T, x,x,T,T, T,T,T,x, T,T,T,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x},
 		{x,T,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, T,x,x,x, x,x,x,x, x,x,x,T, T,T,T,x, T,T,T,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x},
-		{x,T,T,T, x,T,T,T, x,x,T,x, x,x,x,T, T,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,T,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, T,x,x,x, x,T,T,T, T,T,T,x, x,x,x,x, x,x,x,x, x,x,x},
+		{x,T,T,T, x,T,T,T, x,x,x,x, x,x,x,x, x,T,x,T, T,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,T,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, T,x,x,x, x,T,T,T, T,T,T,x, x,x,x,x, x,x,x,x, x,x,x},
 		{x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,T,T, T,T,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x},
 		{x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,T,T, T,T,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x},
-		{x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, T,T,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,T,T, T,T,T,T, T,T,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x},
+		{x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, T,T,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,T,T, T,T,T,T, T,T,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x},
 		{x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,T,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,T,T,T, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x},
-		{x,T,T,T, x,T,T,T, x,x,T,x, x,x,x,T, T,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,T,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,T, T,T,T,x, x,x,x,x, x,x,x,x, x,x,x},
-		{x,T,T,T, x,T,T,T, x,x,T,x, x,x,x,T, T,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,T,x,x, x,x,x,x, x,x,x,T, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, T,x,x,x, x,T,T,T, T,T,T,x, x,x,x,x, x,x,x,x, x,x,x},
-		{x,T,T,T, T,T,T,T, x,x,T,x, x,x,x,T, T,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,T,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, T,x,x,x, x,T,T,T, T,T,T,x, x,x,x,x, x,x,x,x, x,x,x}
+		{x,T,T,T, x,T,T,T, x,x,x,x, x,x,x,x, x,T,x,T, T,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,T,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,T, T,T,T,x, x,x,x,x, x,x,x,x, x,x,x},
+		{x,T,T,T, x,T,T,T, x,x,x,x, x,x,x,x, x,T,x,T, T,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,T,x,x, x,x,x,x, x,x,x,T, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, T,x,x,x, x,T,T,T, T,T,T,x, x,x,x,x, x,x,x,x, x,x,x},
+		{x,T,T,T, T,T,T,T, x,x,x,x, x,x,x,x, x,T,x,T, T,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,T,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, x,x,x,x, T,x,x,x, x,T,T,T, T,T,T,x, x,x,x,x, x,x,x,x, x,x,x}
 	};
 
 
@@ -2083,24 +2029,24 @@ void Errors::SynErr(int line, int col, int n) {
 			case 5: s = coco_string_create(L"decimal expected"); break;
 			case 6: s = coco_string_create(L"dec_float expected"); break;
 			case 7: s = coco_string_create(L"float expected"); break;
-			case 8: s = coco_string_create(L"\"var\" expected"); break;
-			case 9: s = coco_string_create(L"\";\" expected"); break;
-			case 10: s = coco_string_create(L"\"(\" expected"); break;
-			case 11: s = coco_string_create(L"\")\" expected"); break;
-			case 12: s = coco_string_create(L"\":\" expected"); break;
+			case 8: s = coco_string_create(L"\"const\" expected"); break;
+			case 9: s = coco_string_create(L"\"unique\" expected"); break;
+			case 10: s = coco_string_create(L"\":\" expected"); break;
+			case 11: s = coco_string_create(L"\";\" expected"); break;
+			case 12: s = coco_string_create(L"\"extends\" expected"); break;
 			case 13: s = coco_string_create(L"\",\" expected"); break;
-			case 14: s = coco_string_create(L"\"where\" expected"); break;
-			case 15: s = coco_string_create(L"\"int\" expected"); break;
-			case 16: s = coco_string_create(L"\"real\" expected"); break;
-			case 17: s = coco_string_create(L"\"bool\" expected"); break;
-			case 18: s = coco_string_create(L"\"[\" expected"); break;
-			case 19: s = coco_string_create(L"\"]\" expected"); break;
-			case 20: s = coco_string_create(L"\"<\" expected"); break;
-			case 21: s = coco_string_create(L"\">\" expected"); break;
-			case 22: s = coco_string_create(L"\"const\" expected"); break;
-			case 23: s = coco_string_create(L"\"unique\" expected"); break;
-			case 24: s = coco_string_create(L"\"extends\" expected"); break;
-			case 25: s = coco_string_create(L"\"complete\" expected"); break;
+			case 14: s = coco_string_create(L"\"complete\" expected"); break;
+			case 15: s = coco_string_create(L"\"var\" expected"); break;
+			case 16: s = coco_string_create(L"\"where\" expected"); break;
+			case 17: s = coco_string_create(L"\"(\" expected"); break;
+			case 18: s = coco_string_create(L"\")\" expected"); break;
+			case 19: s = coco_string_create(L"\"int\" expected"); break;
+			case 20: s = coco_string_create(L"\"real\" expected"); break;
+			case 21: s = coco_string_create(L"\"bool\" expected"); break;
+			case 22: s = coco_string_create(L"\"[\" expected"); break;
+			case 23: s = coco_string_create(L"\"]\" expected"); break;
+			case 24: s = coco_string_create(L"\"<\" expected"); break;
+			case 25: s = coco_string_create(L"\">\" expected"); break;
 			case 26: s = coco_string_create(L"\"function\" expected"); break;
 			case 27: s = coco_string_create(L"\"returns\" expected"); break;
 			case 28: s = coco_string_create(L"\"{\" expected"); break;
@@ -2173,8 +2119,8 @@ void Errors::SynErr(int line, int col, int n) {
 			case 95: s = coco_string_create(L"\"::\" expected"); break;
 			case 96: s = coco_string_create(L"\"\\u2022\" expected"); break;
 			case 97: s = coco_string_create(L"??? expected"); break;
-			case 98: s = coco_string_create(L"invalid Function"); break;
-			case 99: s = coco_string_create(L"invalid Function"); break;
+			case 98: s = coco_string_create(L"invalid FunctionDef"); break;
+			case 99: s = coco_string_create(L"invalid FunctionDef"); break;
 			case 100: s = coco_string_create(L"invalid Procedure"); break;
 			case 101: s = coco_string_create(L"invalid Type"); break;
 			case 102: s = coco_string_create(L"invalid TypeAtom"); break;

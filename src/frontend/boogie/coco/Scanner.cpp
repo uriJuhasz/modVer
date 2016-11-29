@@ -439,11 +439,11 @@ void Scanner::Init() {
 	start.set(92, 1);
 	start.set(45, 87);
 	start.set(48, 46);
-	start.set(59, 52);
-	start.set(40, 53);
-	start.set(41, 54);
 	start.set(58, 88);
-	start.set(44, 55);
+	start.set(59, 52);
+	start.set(44, 53);
+	start.set(40, 54);
+	start.set(41, 55);
 	start.set(91, 56);
 	start.set(93, 57);
 	start.set(60, 89);
@@ -471,15 +471,15 @@ void Scanner::Init() {
 	start.set(955, 84);
 	start.set(8226, 86);
 		start.set(Buffer::EoF, -1);
-	keywords.set(L"var", 8);
-	keywords.set(L"where", 14);
-	keywords.set(L"int", 15);
-	keywords.set(L"real", 16);
-	keywords.set(L"bool", 17);
-	keywords.set(L"const", 22);
-	keywords.set(L"unique", 23);
-	keywords.set(L"extends", 24);
-	keywords.set(L"complete", 25);
+	keywords.set(L"const", 8);
+	keywords.set(L"unique", 9);
+	keywords.set(L"extends", 12);
+	keywords.set(L"complete", 14);
+	keywords.set(L"var", 15);
+	keywords.set(L"where", 16);
+	keywords.set(L"int", 19);
+	keywords.set(L"real", 20);
+	keywords.set(L"bool", 21);
 	keywords.set(L"function", 26);
 	keywords.set(L"returns", 27);
 	keywords.set(L"axiom", 30);
@@ -937,17 +937,17 @@ Token* Scanner::NextToken() {
 			if ((ch >= L'0' && ch <= L'9')) {AddCh(); goto case_50;}
 			else {goto case_0;}
 		case 52:
-			{t->kind = 9; break;}
-		case 53:
-			{t->kind = 10; break;}
-		case 54:
 			{t->kind = 11; break;}
-		case 55:
+		case 53:
 			{t->kind = 13; break;}
-		case 56:
+		case 54:
+			{t->kind = 17; break;}
+		case 55:
 			{t->kind = 18; break;}
+		case 56:
+			{t->kind = 22; break;}
 		case 57:
-			{t->kind = 19; break;}
+			{t->kind = 23; break;}
 		case 58:
 			{t->kind = 28; break;}
 		case 59:
@@ -1025,19 +1025,19 @@ Token* Scanner::NextToken() {
 			if ((ch >= L'0' && ch <= L'9')) {AddCh(); goto case_13;}
 			else {t->kind = 76; break;}
 		case 88:
-			recEnd = pos; recKind = 12;
+			recEnd = pos; recKind = 10;
 			if (ch == L'=') {AddCh(); goto case_59;}
 			else if (ch == L':') {AddCh(); goto case_85;}
-			else {t->kind = 12; break;}
+			else {t->kind = 10; break;}
 		case 89:
-			recEnd = pos; recKind = 20;
+			recEnd = pos; recKind = 24;
 			if (ch == L'=') {AddCh(); goto case_97;}
 			else if (ch == L':') {AddCh(); goto case_72;}
-			else {t->kind = 20; break;}
+			else {t->kind = 24; break;}
 		case 90:
-			recEnd = pos; recKind = 21;
+			recEnd = pos; recKind = 25;
 			if (ch == L'=') {AddCh(); goto case_70;}
-			else {t->kind = 21; break;}
+			else {t->kind = 25; break;}
 		case 91:
 			recEnd = pos; recKind = 29;
 			if (ch == L'|') {AddCh(); goto case_81;}

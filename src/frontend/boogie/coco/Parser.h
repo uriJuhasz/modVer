@@ -5,7 +5,12 @@
 
 #include <vector>
 #include <string>
+#include <memory>
 #include "frontend/boogie/AST.h"
+
+using namespace frontend::boogie::AST;
+using std::vector;
+using std::unique_ptr;
 
 
 #include "Scanner.h"
@@ -61,6 +66,13 @@ public:
 	Token *la;			// lookahead token
 
 Program program;
+void parse(){
+	BoogiePL();
+} 
+
+static TextPosition toTextPos(const Token& t){ return TextPosition(t.line,t.col); } 
+
+
 
 /*--------------------------------------------------------------------------*/
 
@@ -70,36 +82,36 @@ Program program;
 	void SemErr(const wchar_t* msg);
 
 	void BoogiePL();
-	void Consts(out List<Variable>/*!*/ ds);
-	void Function(out List<Declaration>/*!*/ ds);
-	void Axiom(out Axiom/*!*/ m);
-	void UserDefinedTypes(out List<Declaration/*!*/>/*!*/ ts);
-	void GlobalVars(out List<Variable>/*!*/ ds);
-	void Procedure(out Procedure/*!*/ proc, out /*maybe null*/ Implementation impl);
-	void Implementation(out Implementation/*!*/ impl);
-	void Attribute(ref QKeyValue kv);
-	void IdsTypeWheres(bool allowWhereClauses, string context, System.Action<TypedIdent> action );
+	void constantsDef(AST::Scope& scope );
+	void FunctionDef(Scope& scope );
+	void Axiom(Scope& scope /*out Axiom/*!*/ m*/);
+	void TypeDefs(Scope& scope /*out List<Declaration> ts*/ );
+	void GlobalVarDefs(Scope& scope );
+	void Procedure(Scope& scope );
+	void Implementation(Scope& scope );
+	void Attributes(unique_ptr<Attributes>& );
+	void Identifiers(vector<Identifier>& ids );
+	void Type(unique_ptr<Type>& type );
+	void OrderSpec(unique_ptr<ConstantOrderSpec>& orderSpec);
+	void OrderSpecParent(ConstantOrderSpec& orderSpec );
+	void IdsTypeWheres(bool allowWhereClauses, const string& context, System.Action<TypedIdent> action );
+	void IdsTypeWhere(bool allowWhereClauses, string context, System.Action<TypedIdent> action );
+	void Expression(out Expr/*!*/ e0);
 	void LocalVars(List<Variable>/*!*/ ds);
 	void ProcFormals(bool incoming, bool allowWhereClauses, out List<Variable>/*!*/ ds);
 	void AttrsIdsTypeWheres(bool allowAttributes, bool allowWhereClauses, string context, System.Action<TypedIdent, QKeyValue> action );
 	void BoundVars(IToken/*!*/ x, out List<Variable>/*!*/ ds);
-	void IdsType(out List<TypedIdent>/*!*/ tyds);
-	void Idents(out List<IToken>/*!*/ xs);
-	void Type(out Bpl.Type/*!*/ ty);
 	void AttributesIdsTypeWhere(bool allowAttributes, bool allowWhereClauses, string context, System.Action<TypedIdent, QKeyValue> action );
-	void IdsTypeWhere(bool allowWhereClauses, string context, System.Action<TypedIdent> action );
-	void Expression(out Expr/*!*/ e0);
 	void TypeAtom(out Bpl.Type/*!*/ ty);
-	void Ident(out IToken/*!*/ x);
+	void Indetifier(out IToken/*!*/ x);
 	void TypeArgs(List<Bpl.Type>/*!*/ ts);
 	void MapType(out Bpl.Type/*!*/ ty);
 	void TypeParams(out IToken/*!*/ tok, out List<TypeVariable>/*!*/ typeParams);
 	void Types(List<Bpl.Type>/*!*/ ts);
-	void OrderSpec(out bool ChildrenComplete, out List<ConstantParent/*!*/> Parents);
 	void VarOrType(out TypedIdent/*!*/ tyd, out QKeyValue kv);
 	void Proposition(out Expr/*!*/ e);
 	void UserDefinedType(out Declaration/*!*/ decl, QKeyValue kv);
-	void WhiteSpaceIdents(out List<IToken>/*!*/ xs);
+	void WhiteSpaceIdentifiers(out List<IToken>/*!*/ xs);
 	void ProcSignature(bool allowWhereClausesOnFormals, out IToken/*!*/ name, out List<TypeVariable>/*!*/ typeParams,
 out List<Variable>/*!*/ ins, out List<Variable>/*!*/ outs, out QKeyValue kv);
 	void Spec(List<Requires>/*!*/ pre, List<IdentifierExpr>/*!*/ mods, List<Ensures>/*!*/ post);
