@@ -220,7 +220,7 @@ void Parser::parseTypeDeclaration(){
     std::wcout << "   Parsing type declaration";
     auto attributes = parseAttributes();
     auto finite = tryParseKW("finite");
-    finite = finite;
+    finite = finite || finite;
     auto id = parseIdentifier();
     std::wcout << L" \"" << id->name << "\"" << endl;
     skipUntil(';');

@@ -100,7 +100,7 @@ constantsDef<. AST::Scope& scope .>
   [ OrderSpec<orderSpec> ]
   (.  for (const auto& id : ids) 
   			scope.addVariableDef(unique_ptr<Variable>(
-  				new AST::Constant(toTextPos(startToken), attributes->clone(), id, type->clone(),unique, orderSpec->clone() ))); 
+  				new AST::Constant(toTextPos(startToken), attributes->clone(), id, type->clone(),unique, orderSpec ? orderSpec->clone() : nullptr ))); 
   .)
   ";"
   .
@@ -118,19 +118,6 @@ OrderSpecParent<. ConstantOrderSpec& orderSpec .>
     [ "unique"             (. unique = true; .) ]
     ident                  (. orderSpec.parents.push_back(new ConstantParent (new IdentifierExpression(t, t.val), unique)); .)
 	.
-
-/* IdsType is used with const declarations 
-IdsType<.out List<TypedIdent>/*!*/ tyds.>
-= (. Contract.Ensures(Contract.ValueAtReturn(out tyds) != null); List<IToken>/*!*/ ids;  Bpl.Type/*!*/ ty; .)
-  Identifiers<out ids> ":" Type<out ty>
-  (. tyds = new List<TypedIdent>();
-     foreach(Token/*!*/ id in ids){
-       Contract.Assert(id != null);
-       tyds.Add(new TypedIdent(id, id.val, ty, null));
-     }
-  .)
-  .
-*/
   
 /*------------------------------------------------------------------------*/
 GlobalVarDefs<. Scope& scope .>
@@ -140,38 +127,24 @@ GlobalVarDefs<. Scope& scope .>
   IdsTypeWheres<. [attributes&,scope&]{TypedIdentifier tid => scope.addVariableDef( new AST::GlobalVariable(tid, attributes)) } .> ";"
   .
 
-IdsTypeWheres<. bool allowWhereClauses, const string& context, System.Action<TypedIdent> action .>
-=
-  IdsTypeWhere<allowWhereClauses, context, action>
-  { "," IdsTypeWhere<allowWhereClauses, context, action> }
-  .
+IdsTypeWheres<. void action(unique_ptr<TypedIdentifier>) .>
+	= IdsTypeWhere<action> { "," IdsTypeWhere<action> }.
 
 /* context is allowed to be null if allowWhereClauses is true */
-IdsTypeWhere<. bool allowWhereClauses, string context, System.Action<TypedIdent> action .>
-= (. List<IToken>/*!*/ ids;  Bpl.Type/*!*/ ty;  Expr wh = null;  Expr/*!*/ nne; .)
-  Identifiers<out ids> ":" Type<out ty>
-  [ "where" Expression<out nne>  (. if (!allowWhereClauses) {
-                                      this.SemErr("where clause not allowed on " + context);
-                                    } else {
-                                      wh = nne;
-                                    }
-                                 .)
-  ]
-  (. foreach(Token/*!*/ id in ids){
-       Contract.Assert(id != null);
-       action(new TypedIdent(id, id.val, ty, wh));
-     }
-  .)
+IdsTypeWhere<. void action(unique_ptr<TypedIdentifier>) .>
+	= (. vector<Identifier> ids;  unique_ptr<Type> type;  unique_ptr<Expression> whereExp; .)
+  Identifiers<ids> ":" Type<type>
+  [ "where" Expression<whereExp>  ]
+	  (. for (auto& id : ids)
+	       action(new TypedIdentifier(id, id.val, type, whereExp ? whereExp->clone() : nullptr));
+	  .)
   .
 
 LocalVars<.List<Variable>/*!*/ ds.>
-= (.
-    Contract.Ensures(Contract.ValueAtReturn(out ds) != null);
-    QKeyValue kv = null;
-  .)
+= (. unique_ptr<AST::Attributes> attributes; .)
   "var"
-  { Attributes<ref kv> }
-  IdsTypeWheres<true, "local variables", delegate(TypedIdent tyd) { ds.Add(new LocalVariable(tyd.tok, tyd, kv)); } > ";"
+  { Attributes<attributes> }
+  IdsTypeWheres<. [attributes&,scope&]{TypedIdentifier tid => scope.addVariableDef( new AST::LocalVariable(tid, attributes)) } .> ";"
   .
 
 ProcFormals<.bool incoming, bool allowWhereClauses, out List<Variable>/*!*/ ds.>
@@ -381,7 +354,7 @@ FunctionDef<. Scope& scope .>
   .)
   .
 
-VarOrType<out TypedIdent/*!*/ tyd, out QKeyValue kv>
+VarOrType<out TypedIdent tyd, out QKeyValue kv>
 = (.
     Contract.Ensures(Contract.ValueAtReturn(out tyd) != null);
     string/*!*/ varName = TypedIdent.NoName;
@@ -404,7 +377,7 @@ VarOrType<out TypedIdent/*!*/ tyd, out QKeyValue kv>
   .
 
 /*------------------------------------------------------------------------*/
-Axiom<Scope& scope /*out Axiom/*!*/ m*/>
+Axiom<Scope& scope /*out Axiom m*/>
 = (.Contract.Ensures(Contract.ValueAtReturn(out m) != null); Expr/*!*/ e; QKeyValue kv = null; .)
   "axiom"
    { Attributes<ref kv> }
