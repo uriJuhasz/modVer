@@ -6,6 +6,7 @@
 #include <string>
 #include "frontend/boogie/AST.h"
 
+using namespace frontend::boogie::AST;
 COMPILER BoogiePL
 
 /*--------------------------------------------------------------------------*/
@@ -61,11 +62,11 @@ PRODUCTIONS
 
 /*------------------------------------------------------------------------*/
 BoogiePL
-= { Consts        <. program .>
-  | Function      <. program .>
+= { ConstantsDef  <. program .>
+  | FunctionDef   <. program .>
   | Axiom         <. program .>
-  | Types         <. program .>
-  | GlobalVars    <. program .>
+  | TypeDefs      <. program .>
+  | GlobalVarDefs <. program .>
   | Procedure     <. program .>
   | Implementation<. program .>
   }
@@ -73,46 +74,55 @@ BoogiePL
   .
 
 /*------------------------------------------------------------------------*/
-Consts<. AST::Scope& scope .>
-= (. IToken y; 
-	  list<AST::TypedIdentifier> xs;
+ConstantsDef<. AST::Scope& scope .>
+= (. IToken startToken; 
+	  list<Identifier> ids;
+	  Type type;
      bool unique = false; 
-     ATST::Attributes attributes;
-     bool ChildrenComplete = false;
-     list<AST::ConstantParent> Parents = null; .)
-  
-  "const"                 (. y = t; .)
-  { Attribute<ref kv> }
-  [ "unique"              (. u = true;  .)
-  ]
-  IdsType<out xs>
-  [ OrderSpec<out ChildrenComplete, out Parents> ]
-  (. bool makeClone = false;
-     foreach(TypedIdent/*!*/ x in xs){
-       Contract.Assert(x != null);
-
-       // ensure that no sharing is introduced
-       List<ConstantParent/*!*/> ParentsClone;
-       if (makeClone && Parents != null) {
-         ParentsClone = new List<ConstantParent/*!*/> ();
-         foreach (ConstantParent/*!*/ p in Parents){
-           Contract.Assert(p != null);
-           ParentsClone.Add(new ConstantParent (
-                            new IdentifierExpr (p.Parent.tok, p.Parent.Name),
-                            p.Unique));}
-       } else {
-         ParentsClone = Parents;
-       }
-       makeClone = true;
-
-       ds.Add(new Constant(y, x, u, ParentsClone, ChildrenComplete, kv));
-     }
+     Attributes attributes;
+     unique_ptr<ConstantOrderSpec> orderSpec;
   .)
+  
+  "const"                                   (. startToken = t; .)
+  { Attribute<attributes> }
+  [ "unique" ]                              (. unique = true;  .)
+  Identifiers<ids> ":" Type<type>
+  [ OrderSpec<orderSpec> ]
+  (.  for (const auto& id : ids) scope.addVariableDef(new Constant(startToken, id, unique, parentSpec, attributes)); .)
   ";"
   .
 
 
-GlobalVars<. list<AST::VariableDef>& vs .>
+OrderSpec<. unique_ptr<ConstantOrderSpec>& orderSpec.>
+= "extends"                                                          (. orderSpec = new ConstantOrderSpec(); .) 
+  [ OrderSpecParent<orderSpec> { ","  OrderSpecParent<orderSpec> } ]
+  [ "complete"                                                       (. orderSpec->ChildrenComplete = true; .) 
+  ]
+  .
+
+
+OrderSpecParent<. ConstantOrderSpec& orderSpec .>
+= (. bool unique = false;  .)
+    [ "unique"             (. unique = true; .)
+    ]
+    ident                  (. orderSpec.parents.push_back(new ConstantParent (new IdentifierExpr(t, t.val), unique)); .)
+	.
+
+/* IdsType is used with const declarations 
+IdsType<.out List<TypedIdent>/*!*/ tyds.>
+= (. Contract.Ensures(Contract.ValueAtReturn(out tyds) != null); List<IToken>/*!*/ ids;  Bpl.Type/*!*/ ty; .)
+  Identifiers<out ids> ":" Type<out ty>
+  (. tyds = new List<TypedIdent>();
+     foreach(Token/*!*/ id in ids){
+       Contract.Assert(id != null);
+       tyds.Add(new TypedIdent(id, id.val, ty, null));
+     }
+  .)
+  .
+*/
+  
+/*------------------------------------------------------------------------*/
+GlobalVarDefs<. Scope& scope .>
 = (. AST::Attributes attributes; .)
   "var"
   { Attribute<attributes> }
@@ -128,7 +138,7 @@ IdsTypeWheres<. bool allowWhereClauses, const string& context, System.Action<Typ
 /* context is allowed to be null if allowWhereClauses is true */
 IdsTypeWhere<. bool allowWhereClauses, string context, System.Action<TypedIdent> action .>
 = (. List<IToken>/*!*/ ids;  Bpl.Type/*!*/ ty;  Expr wh = null;  Expr/*!*/ nne; .)
-  Idents<out ids> ":" Type<out ty>
+  Identifiers<out ids> ":" Type<out ty>
   [ "where" Expression<out nne>  (. if (!allowWhereClauses) {
                                       this.SemErr("where clause not allowed on " + context);
                                     } else {
@@ -177,17 +187,7 @@ BoundVars<.IToken/*!*/ x, out List<Variable>/*!*/ ds.>
   .
 
 /*------------------------------------------------------------------------*/
-/* IdsType is used with const declarations */
-IdsType<.out List<TypedIdent>/*!*/ tyds.>
-= (. Contract.Ensures(Contract.ValueAtReturn(out tyds) != null); List<IToken>/*!*/ ids;  Bpl.Type/*!*/ ty; .)
-  Idents<out ids> ":" Type<out ty>
-  (. tyds = new List<TypedIdent>();
-     foreach(Token/*!*/ id in ids){
-       Contract.Assert(id != null);
-       tyds.Add(new TypedIdent(id, id.val, ty, null));
-     }
-  .)
-  .
+
 
 /* AttrsIdsTypeWheres is used with the declarations of formals and bound variables */
 AttrsIdsTypeWheres<. bool allowAttributes, bool allowWhereClauses, string context, System.Action<TypedIdent, QKeyValue> action .>
@@ -215,7 +215,7 @@ Type<out Bpl.Type/*!*/ ty>
   (
     TypeAtom<out ty>
   |
-    Ident<out tok>       (. List<Bpl.Type>/*!*/ args = new List<Bpl.Type> (); .)
+    Indetifier<out tok>       (. List<Bpl.Type>/*!*/ args = new List<Bpl.Type> (); .)
     [ TypeArgs<args> ]   (. ty = new UnresolvedTypeIdentifier (tok, tok.val, args); .)
   |
     MapType<out ty>
@@ -228,7 +228,7 @@ TypeArgs<.List<Bpl.Type>/*!*/ ts.>
     TypeAtom<out ty>     (. ts.Add(ty); .)
     [ TypeArgs<ts> ]
   |
-    Ident<out tok>       (. List<Bpl.Type>/*!*/ args = new List<Bpl.Type> ();
+    Indetifier<out tok>       (. List<Bpl.Type>/*!*/ args = new List<Bpl.Type> ();
                             ts.Add(new UnresolvedTypeIdentifier (tok, tok.val, args)); .)
     [ TypeArgs<ts> ]
   |
@@ -269,7 +269,7 @@ MapType<out Bpl.Type/*!*/ ty>
 TypeParams<.out IToken/*!*/ tok, out List<TypeVariable>/*!*/ typeParams.>
 = (.Contract.Ensures(Contract.ValueAtReturn(out tok) != null); Contract.Ensures(Contract.ValueAtReturn(out typeParams) != null); List<IToken>/*!*/ typeParamToks; .)
   "<"    (.  tok = t;  .)
-    Idents<out typeParamToks>
+    Identifiers<out typeParamToks>
   ">"
   (.
     typeParams = new List<TypeVariable> ();
@@ -289,34 +289,10 @@ Types<.List<Bpl.Type>/*!*/ ts.>
 
 /*------------------------------------------------------------------------*/
 
-OrderSpec<.out bool ChildrenComplete, out List<ConstantParent/*!*/> Parents.>
-= (.Contract.Ensures(cce.NonNullElements(Contract.ValueAtReturn(out Parents),true)); ChildrenComplete = false;
-     Parents = null;
-     bool u;
-     IToken/*!*/ parent; .)
-  "extends"                (. Parents = new List<ConstantParent/*!*/> ();
-                              u = false; .)
-  [
-    [ "unique"             (. u = true; .)
-    ]
-    Ident<out parent>      (. Parents.Add(new ConstantParent (
-                                          new IdentifierExpr(parent, parent.val), u)); .)
-    {
-      ","                  (. u = false; .)
-      [ "unique"           (. u = true; .)
-      ]
-      Ident<out parent>    (. Parents.Add(new ConstantParent (
-                                          new IdentifierExpr(parent, parent.val), u)); .)
-    }
-  ]
-  [ "complete"             (. ChildrenComplete = true; .)
-  ]
-  .
 
 /*------------------------------------------------------------------------*/
-Function<.out List<Declaration>/*!*/ ds.>
-= (. Contract.Ensures(Contract.ValueAtReturn(out ds) != null);
-     ds = new List<Declaration>(); IToken/*!*/ z;
+FunctionDef<. Scope& scope .>
+= (. IToken/*!*/ z;
      IToken/*!*/ typeParamTok;
      var typeParams = new List<TypeVariable>();
      var arguments = new List<Variable>();
@@ -328,7 +304,7 @@ Function<.out List<Declaration>/*!*/ ds.>
      Expr definition = null;
      Expr/*!*/ tmp;
   .)
-  "function" { Attribute<ref kv> } Ident<out z>
+  "function" { Attribute<ref kv> } Indetifier<out z>
   [ TypeParams<out typeParamTok, out typeParams> ]
   "("
   [ VarOrType<out tyd, out argKv>      (. arguments.Add(new Formal(tyd.tok, tyd, true, argKv)); .)
@@ -426,7 +402,7 @@ Axiom<out Axiom/*!*/ m>
   .
 
 /*------------------------------------------------------------------------*/
-Types<.out List<Declaration/*!*/>/*!*/ ts.>
+TypeDefs<.out List<Declaration/*!*/>/*!*/ ts.>
 = (. Contract.Ensures(cce.NonNullElements(Contract.ValueAtReturn(out ts))); Declaration/*!*/ decl; QKeyValue kv = null; ts = new List<Declaration/*!*/> (); .)
   "type"
   { Attribute<ref kv> }
@@ -438,8 +414,8 @@ Types<.out List<Declaration/*!*/>/*!*/ ts.>
 UserDefinedType<out Declaration/*!*/ decl, QKeyValue kv>
 = (. Contract.Ensures(Contract.ValueAtReturn(out decl) != null); IToken/*!*/ id; List<IToken>/*!*/ paramTokens = new List<IToken> ();
      Bpl.Type/*!*/ body = dummyType; bool synonym = false; .)
-  Ident<out id>
-  [ WhiteSpaceIdents<out paramTokens> ]
+  Indetifier<out id>
+  [ WhiteSpaceIdentifiers<out paramTokens> ]
   [
     "=" Type<out body>
     (. synonym = true; .)
@@ -510,7 +486,7 @@ ProcSignature<.bool allowWhereClausesOnFormals, out IToken/*!*/ name, out List<T
      IToken/*!*/ typeParamTok; typeParams = new List<TypeVariable>();
      outs = new List<Variable>(); kv = null; .)
   { Attribute<ref kv> }
-  Ident<out name>
+  Indetifier<out name>
   [ TypeParams<out typeParamTok, out typeParams> ]
   ProcFormals<true, allowWhereClausesOnFormals, out ins>
   [ "returns" ProcFormals<false, allowWhereClausesOnFormals, out outs> ]
@@ -520,7 +496,7 @@ ProcSignature<.bool allowWhereClausesOnFormals, out IToken/*!*/ name, out List<T
 Spec<.List<Requires>/*!*/ pre, List<IdentifierExpr>/*!*/ mods, List<Ensures>/*!*/ post.>
 = (.Contract.Requires(pre != null); Contract.Requires(mods != null); Contract.Requires(post != null); List<IToken>/*!*/ ms; .)
   ( "modifies"
-    [ Idents<out ms>        (. foreach(IToken/*!*/ m in ms){
+    [ Identifiers<out ms>        (. foreach(IToken/*!*/ m in ms){
                                  Contract.Assert(m != null);
                                  mods.Add(new IdentifierExpr(m, m.val));
                                }
@@ -628,7 +604,7 @@ TransferCmd<out TransferCmd/*!*/ tc>
      List<String> ss = new List<String>();
   .)
   ( "goto"             (. y = t; .)
-    Idents<out xs>     (. foreach(IToken/*!*/ s in xs){
+    Identifiers<out xs>     (. foreach(IToken/*!*/ s in xs){
                             Contract.Assert(s != null);
                             ss.Add(s.val); }
                           tc = new GotoCmd(y, ss);
@@ -707,7 +683,7 @@ BreakCmd<out BreakCmd/*!*/ bcmd>
      string breakLabel = null;
   .)
   "break"             (. x = t; .)
-  [ Ident<out y>      (. breakLabel = y.val; .)
+  [ Indetifier<out y>      (. breakLabel = y.val; .)
   ] ";"               (. bcmd = new BreakCmd(x, breakLabel); .)
   .
 
@@ -732,7 +708,7 @@ LabelOrCmd<out Cmd c, out IToken label>
     Proposition<out e>    (. c = new AssumeCmd(x, e, kv); .)
     ";"
   | "havoc"               (. x = t; .)
-    Idents<out xs> ";"    (. ids = new List<IdentifierExpr>();
+    Identifiers<out xs> ";"    (. ids = new List<IdentifierExpr>();
                              foreach(IToken/*!*/ y in xs){
                                Contract.Assert(y != null);
                                ids.Add(new IdentifierExpr(y, y.val));
@@ -757,7 +733,7 @@ LabelOrAssign<out Cmd c, out IToken label>
      List<Expr/*!*/>/*!*/ rhss;
      List<Expr/*!*/>/*!*/ indexes;
   .)
-  Ident<out id>              (. x = t; .)
+  Indetifier<out id>              (. x = t; .)
   ( ":"                      (. c = null;  label = x; .)
 
   | (. lhss = new List<AssignLhs/*!*/>(); .)
@@ -767,7 +743,7 @@ LabelOrAssign<out Cmd c, out IToken label>
     (. lhss.Add(lhs); .)
 
     { ","
-      Ident<out id>
+      Indetifier<out id>
       (. lhs = new SimpleAssignLhs(id, new IdentifierExpr(id, id.val)); .)
       { MapAssignIndex<out y, out indexes>    (. lhs = new MapAssignLhs(y, lhs, indexes); .) }
       (. lhss.Add(lhs); .)
@@ -839,7 +815,7 @@ CallParams<bool isAsync, bool isFree, QKeyValue kv, IToken x, out Cmd c>
     IToken p;
 	c = null;
   .)
-  Ident<out first>
+  Indetifier<out first>
     ( "("
       [ Expression<out en>       (. es.Add(en); .)
         { "," Expression<out en> (. es.Add(en); .)
@@ -848,11 +824,11 @@ CallParams<bool isAsync, bool isFree, QKeyValue kv, IToken x, out Cmd c>
       ")"                         (. c = new CallCmd(x, first.val, es, ids, kv); ((CallCmd) c).IsFree = isFree; ((CallCmd) c).IsAsync = isAsync; .)
     |
                                   (. ids.Add(new IdentifierExpr(first, first.val)); .)
-      [ "," Ident<out p>  (. ids.Add(new IdentifierExpr(p, p.val)); .)
-        { "," Ident<out p>  (. ids.Add(new IdentifierExpr(p, p.val)); .)
+      [ "," Indetifier<out p>  (. ids.Add(new IdentifierExpr(p, p.val)); .)
+        { "," Indetifier<out p>  (. ids.Add(new IdentifierExpr(p, p.val)); .)
         }
       ] ":="
-      Ident<out first> "("
+      Indetifier<out first> "("
       [ Expression<out en>       (. es.Add(en); .)
         { "," Expression<out en> (. es.Add(en); .)
         }
@@ -868,18 +844,18 @@ Proposition<out Expr/*!*/ e>
   .
 
 /*------------------------------------------------------------------------*/
-Idents<.out List<IToken>/*!*/ xs.>
+Identifiers<.out List<IToken>/*!*/ xs.>
 = (.Contract.Ensures(Contract.ValueAtReturn(out xs) != null); IToken/*!*/ id; xs = new List<IToken>(); .)
-  Ident<out id>                 (. xs.Add(id); .)
-  { "," Ident<out id>           (. xs.Add(id); .)
+  Indetifier<out id>                 (. xs.Add(id); .)
+  { "," Indetifier<out id>           (. xs.Add(id); .)
   }
   .
 
 /*------------------------------------------------------------------------*/
-WhiteSpaceIdents<.out List<IToken>/*!*/ xs.>
+WhiteSpaceIdentifiers<.out List<IToken>/*!*/ xs.>
 = (. Contract.Ensures(Contract.ValueAtReturn(out xs) != null); IToken/*!*/ id; xs = new List<IToken>(); .)
-  Ident<out id>                 (. xs.Add(id); .)
-  { Ident<out id>               (. xs.Add(id); .)
+  Indetifier<out id>                 (. xs.Add(id); .)
+  { Indetifier<out id>               (. xs.Add(id); .)
   }
   .
 
@@ -1144,7 +1120,7 @@ AtomExpression<out Expr/*!*/ e>
 		| Float<out bf>            (. e = new LiteralExpr(t, bf); .)
   | BvLit<out bn, out n> (. e = new LiteralExpr(t, bn, n); .)
 
-  | Ident<out x>            (. id = new IdentifierExpr(x, x.val);  e = id; .)
+  | Indetifier<out x>            (. id = new IdentifierExpr(x, x.val);  e = id; .)
     [ "("
       ( Expressions<out es> (. e = new NAryExpr(x, new FunctionCall(id), es); .)
       | /* empty */         (. e = new NAryExpr(x, new FunctionCall(id), new List<Expr>()); .)
@@ -1212,7 +1188,7 @@ SpecBlock<out Block/*!*/ b>
      b = dummyBlock;
      Expr/*!*/ e;
   .)
-  Ident<out x> ":"
+  Indetifier<out x> ":"
   { LabelOrCmd<out c, out label>
                        (. if (c != null) {
                             Contract.Assert(label == null);
@@ -1224,7 +1200,7 @@ SpecBlock<out Block/*!*/ b>
                        .)
   }
   ( "goto"             (. y = t; .)
-    Idents<out xs>     (. foreach(IToken/*!*/ s in xs){
+    Identifiers<out xs>     (. foreach(IToken/*!*/ s in xs){
                             Contract.Assert(s != null);
                             ss.Add(s.val); }
                           b = new Block(x,x.val,cs,new GotoCmd(y,ss));
@@ -1329,7 +1305,7 @@ Lambda = "lambda" | '\u03bb'.
 QSep = "::" | '\u2022'.
 
 /*------------------------------------------------------------------------*/
-Ident<out IToken/*!*/ x>
+Indetifier<out IToken/*!*/ x>
 =(.Contract.Ensures(Contract.ValueAtReturn(out x) != null);.)
   ident            (.  x = t;
                        if (x.val.StartsWith("\\"))
