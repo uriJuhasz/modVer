@@ -3,21 +3,24 @@
 
 #include <set>
 #include <vector>
+#include <memory>
 #include "common/data_types.h"
-
 
 namespace frontend{
 namespace boogie{
 namespace AST{
     using common::String;
     using String = common::String;
+    using unique_ptr = std::unique_ptr;
+    using vector = std::vector;
+
     class ASTNode{};
-    class TypeDeclaration : public ASTNode{};
-    class ConstDeclaration : public ASTNode{};
-    class VarDeclaration : public ASTNode{};
-    class FunctionDeclaration : public ASTNode{};
-    class Axiom : public ASTNode{};
-    class ProcedureDeclaration : public ASTNode{};
+    class TypeDef     : public ASTNode{};
+    class VariableDef : public ASTNode{};
+    class FunctionDef : public ASTNode{};
+
+    class Axiom          : public ASTNode{};
+    class Procedure      : public ASTNode{};
     class Implementation : public ASTNode{};
     
     class Attributes : public ASTNode{};
@@ -27,19 +30,33 @@ namespace AST{
         : name(_name){}
         String name;
     };
+    class TypedIdentifier : public Identifier{ public: Type type; };
+    class Type : public ASTNode{};
+
     class ProcedureSignature : public ASTNode{};
     class ProcedureSpec : public ASTNode{};
     class ProcedureBody : public ASTNode{};
     class TypeArguments : public ASTNode{};
-    class Program : public ASTNode{
-        std::vector<TypeDeclaration>      types;
-        std::vector<ConstDeclaration>     constants;
-        std::vector<VarDeclaration>       variables;
-        std::vector<FunctionDeclaration>  functionss;
-        std::vector<ProcedureDeclaration> procedures;
 
-        std::vector<Axiom>                axioms;
-        std::vector<Implementation> implementations;
+    class Scope : public ASTNode{
+    public:
+    	void addTypeDef    (unique_ptr<TypeDef> td);
+    	void addVariableDef(unique_ptr<VariableDef> vd);
+    	void addFunctionDef(unique_ptr<FunctionDef> fd);
+    private:
+    	vector<VariableDef> variables;
+    	vector<TypeDef>     types;
+    	vector<FunctionDef> functions;
+    };
+    class Program : public ASTNode{
+    public:
+    	void addAxiom(unique_ptr<Axiom> axiom);
+    	void addProcedure(unique_ptr<Procedure> procedure);
+    	void addImplementation(unique_ptr<Implementation> Implementation);
+    private:
+        vector<Axiom>          axioms;
+        vector<Procedure>      procedures;
+        vector<Implementation> implementations;
     };
 
 }//namespace AST

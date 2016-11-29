@@ -5,7 +5,7 @@
 #include <fstream>
 
 #include "common/Log.h"
-#include "frontend/boogie/manual/Parser.h"
+#include "frontend/boogie/coco/Parser.h"
 
 using namespace std;
 using namespace common;
@@ -49,10 +49,10 @@ int main(int argc, char*argv[])
     std::cin.get();
     cout << "End" << endl;
     cin.get();
-u     return 0;
+    return 0;
 }
 
-int parseBoogieFile(const string& boogieFileName){
+int parseBoogieFile1(const string& boogieFileName){
     cout << "I:Opening Boogie file \"" << boogieFileName << "\"" << endl;
     ifstream boogieFile(boogieFileName,ios::binary);
     if (!boogieFile.good() || !boogieFile.is_open()){
@@ -76,6 +76,33 @@ int parseBoogieFile(const string& boogieFileName){
     frontend::boogie::AST::Program program;
     frontend::boogie::parser::parse(input,program);
     
+    cout << "I: Closing Boogie file \"" << boogieFileName << "\"" << endl;
+    return 0;
+}
+
+int parseBoogieFile(const string& boogieFileName){
+
+    cout << "I:Opening Boogie file \"" << boogieFileName << "\"" << endl;
+    ifstream boogieFile(boogieFileName,ios::binary);
+    if (!boogieFile.good() || !boogieFile.is_open()){
+        cerr << "E:Failed to open Boogie file." << endl;
+        return 1;
+    }
+
+    cout << "I: Reading file" << endl;
+    wstring input(
+        (std::istreambuf_iterator<char>(boogieFile) ),
+        (std::istreambuf_iterator<char>()));
+    cout << "  I: Total " << input.size() << " bytes" << endl;
+
+    if (boogieFile.bad() || boogieFile.fail()){
+        cerr << "E: Failed to read from Boogie file." << endl;
+        return 2;
+    }
+
+    cout << "I: Parsing" << endl;
+    frontend::boogie::parser::parse(input);
+
     cout << "I: Closing Boogie file \"" << boogieFileName << "\"" << endl;
     return 0;
 }
