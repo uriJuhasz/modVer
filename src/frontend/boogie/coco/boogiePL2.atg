@@ -14,6 +14,10 @@ COMPILER BoogiePL
 
 /*--------------------------------------------------------------------------*/
 Program program;
+Parser()
+: Parser(new Scanner()){
+	
+}
 void parse(){
 	BoogiePL();
 } 
@@ -853,12 +857,12 @@ Expressions<.out List<Expr>/*!*/ es.>
   .
 
 /*------------------------------------------------------------------------*/
-Expression<.out Expr/*!*/ e0.>
-= (. Contract.Ensures(Contract.ValueAtReturn(out e0) != null); IToken/*!*/ x; Expr/*!*/ e1; .)
-  ImpliesExpression<false, out e0>
-  { EquivOp        (. x = t; .)
-    ImpliesExpression<false, out e1>
-                   (. e0 = Expr.Binary(x, BinaryOperator.Opcode.Iff, e0, e1); .)
+Expression<. unique_ptr<Expression>& e0.>
+= (. IToken tok; unique_ptr<Expression> e1; .)
+  ImpliesExpression<false, e0>
+  { EquivOp        (. tok = t; .)
+    ImpliesExpression<false, e1>
+                   (. e0 = Expression.make(tok, BinaryOperator.Opcode.Iff, e0, e1); .)
   }
   .
 

@@ -127,6 +127,10 @@ namespace AST{
         vector<Procedure>      procedures;
         vector<Implementation> implementations;
     };
+    class Operation : public ASTNode{};
+    class Expression : public ASTNode{
+    	static void make(const TextPosition& _textPos,const Operation op, std::initializer_list<unique_ptr<Expression>>);
+    };
 
 }//namespace AST
 }//namespace frontend
