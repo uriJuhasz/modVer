@@ -28,6 +28,7 @@
 								<option id="gnu.cpp.compiler.option.other.pic.2037804320" name="Position Independent Code (-fPIC)" superClass="gnu.cpp.compiler.option.other.pic" useByScannerDiscovery="false" value="false" valueType="boolean"/>
 								<option id="gnu.cpp.compiler.option.include.paths.873061937" name="Include paths (-I)" superClass="gnu.cpp.compiler.option.include.paths" useByScannerDiscovery="false" valueType="includePath">
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/${ProjName}/src}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;C:\Users\uri\workspace4.7\boost_1_62_0&quot;"/>
 								</option>
 								<inputType id="cdt.managedbuild.tool.gnu.cpp.compiler.input.889020022" superClass="cdt.managedbuild.tool.gnu.cpp.compiler.input"/>
 							</tool>

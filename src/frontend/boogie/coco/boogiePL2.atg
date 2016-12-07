@@ -144,7 +144,7 @@ IdsTypeWhere<. void action(unique_ptr<TypedIdentifier>) .>
 	  .)
   .
 
-LocalVars<.List<Variable>/*!*/ ds.>
+LocalVars<. Scope& scope .>
 = (. unique_ptr<AST::Attributes> attributes; .)
   "var"
   { Attributes<attributes> }
