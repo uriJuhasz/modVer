@@ -51,7 +51,7 @@ int main(int argc, char*argv[])
     cin.get();
     return 0;
 }
-
+/*
 int parseBoogieFile1(const string& boogieFileName){
     cout << "I:Opening Boogie file \"" << boogieFileName << "\"" << endl;
     ifstream boogieFile(boogieFileName,ios::binary);
@@ -81,7 +81,7 @@ int parseBoogieFile1(const string& boogieFileName){
     cout << "I: Closing Boogie file \"" << boogieFileName << "\"" << endl;
     return 0;
 }
-
+*/
 int parseBoogieFile(const string& boogieFileName){
 
     cout << "I:Opening Boogie file \"" << boogieFileName << "\"" << endl;
@@ -92,7 +92,7 @@ int parseBoogieFile(const string& boogieFileName){
     }
 
     cout << "I: Reading file" << endl;
-    wstring input(
+    std::basic_string<unsigned char> input(
         (std::istreambuf_iterator<char>(boogieFile) ),
         (std::istreambuf_iterator<char>()));
     cout << "  I: Total " << input.size() << " bytes" << endl;

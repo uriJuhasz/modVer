@@ -14,8 +14,8 @@ COMPILER BoogiePL
 
 /*--------------------------------------------------------------------------*/
 Program program;
-Parser()
-: Parser(new Scanner()){
+Parser(const std::basic_string<unsigned char>& buf)
+: Parser(new Scanner(buf.c_str(),buf.size())){
 	
 }
 void parse(){
