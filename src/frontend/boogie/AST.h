@@ -24,6 +24,8 @@ namespace AST{
     	ASTNode(const TextPosition& _textPos = TextPosition::NoPos) : textPos(_textPos){}
     };
     class Attributes;
+    class Expression;
+    class TypeVariable : public ASTNode{};
     class Type : public ASTNode{public:unique_ptr<Attributes> clone() const;};
     class Identifier : public ASTNode{
     public:
@@ -79,7 +81,32 @@ namespace AST{
         	unique_ptr<Attributes> attributes;
         	bool isGlobal(){return true;}
         };
-    class FunctionDef : public ASTNode{};
+
+    class FunctionDef : public ASTNode{
+    public:
+        FunctionDef(
+        	const TextPosition& _textPos,
+			unique_ptr<Attributes> _attributes,
+			unique_ptr<Identifier> _name,
+			vector<TypeVariable>& _typeParameters,
+			vector<Variable>& _parameters,
+			unique_ptr<Variable> _returnVar,
+			unique_ptr<Expression> _body)
+			: ASTNode(_textPos),
+			  attributes(move(_attributes)),
+    		  name      (move(_name)),
+    		  typeParameters(move(_typeParameters)),
+    		  parameters (move(_parameters)),
+			  returnVar (move(_returnVar)),
+			  body      (move(_body))
+		{}
+        unique_ptr<Attributes> attributes;
+        unique_ptr<Identifier> name;
+		vector<Variable> parameters;
+		vector<TypeVariable> typeParameters;
+		unique_ptr<Variable> returnVar;
+		unique_ptr<Expression> body;
+    };
 
     class ConstantParentSpec: public ASTNode {
     public:
@@ -88,6 +115,7 @@ namespace AST{
     };
     class ConstantOrderSpec : public ASTNode {
     	public:
+    		bool specified = false;
     		bool ChildrenComplete = false;
     		vector<ConstantParentSpec> parents;
     		unique_ptr<ConstantOrderSpec> clone() const;

@@ -3,12 +3,14 @@
 // BoogiePL -
 //--------------------------------------------------------------------------*/
 #include <vector>
+#include <list>
 #include <string>
 #include <memory>
 #include "frontend/boogie/AST.h"
 
 using namespace frontend::boogie::AST;
 using std::vector;
+using std::list;
 using std::unique_ptr;
 COMPILER BoogiePL
 
@@ -76,7 +78,7 @@ PRODUCTIONS
 
 /*------------------------------------------------------------------------*/
 BoogiePL
-= { constantsDef  <. program .>
+= { ConstantsDef  <. program .>
   | FunctionDef   <. program .>
   | Axiom         <. program .>
   | TypeDefs      <. program .>
@@ -88,13 +90,13 @@ BoogiePL
   .
 
 /*------------------------------------------------------------------------*/
-constantsDef<. AST::Scope& scope .>
+ConstantsDef<. AST::Scope& scope .>
 = (. Token startToken; 
 	  vector<AST::Identifier> ids;
 	  unique_ptr<AST::Type> type;
      bool unique = false; 
      unique_ptr<AST::Attributes> attributes;
-     unique_ptr<AST::ConstantOrderSpec> orderSpec;
+     unique_ptr<AST::ConstantOrderSpec> orderSpec = new ConstantOrderSpec();
   .)
   
   "const"                                   (. startToken = *t; .)
@@ -104,14 +106,19 @@ constantsDef<. AST::Scope& scope .>
   [ OrderSpec<orderSpec> ]
   (.  for (const auto& id : ids) 
   			scope.addVariableDef(unique_ptr<Variable>(
-  				new AST::Constant(toTextPos(startToken), attributes->clone(), id, type->clone(),unique, orderSpec ? orderSpec->clone() : nullptr ))); 
+  				new AST::Constant(toTextPos(startToken), 
+  				attributes->clone(), 
+  				id, 
+  				type->clone(),
+  				unique, 
+  				orderSpec->clone() )); 
   .)
   ";"
   .
 
 
 OrderSpec<. unique_ptr<ConstantOrderSpec>& orderSpec.>
-= "extends"                                                          (. orderSpec = new ConstantOrderSpec(); .) 
+= "extends"                                                          (. orderSpec->specified = true; .) 
   [ OrderSpecParent<orderSpec> { ","  OrderSpecParent<orderSpec> } ]
   [ "complete"                                                       (. orderSpec->ChildrenComplete = true; .) ] 
   .
@@ -143,6 +150,48 @@ IdsTypeWhere<. void action(unique_ptr<TypedIdentifier>) .>
 	       action(new TypedIdentifier(id, id.val, type, whereExp ? whereExp->clone() : nullptr));
 	  .)
   .
+
+/*------------------------------------------------------------------------*/
+FunctionDef<. Scope& scope .>
+= (. Token idToken;
+     Token typeParamToken;
+     unique_ptr<list<TypeVariable>> typeParams;
+     unique_ptr<list<Variable>> arguments;
+     unique_ptr<TypedIdentifier> tid;
+     unique_ptr<TypedIdentifier> returnTID = null;
+     QKeyValue argKv = null;
+     unique_ptr<Attributes> attributes;
+     unique_ptr<Expression> body = null;
+  .)
+  "function" { Attributes<attributes> } Identifier<idToken>
+  [ TypeParams<typeParamToken, typeParams> ]
+  "(" [ VarOrType<arguments> { "," VarOrType<arguments> } ] ")"
+  (
+    "returns" "(" VarOrType<returnTID> ")"
+    |
+    ":" TypeAsNameless<returnTID>   
+  )
+  ( "{" Expression<body> "}" | ";" )
+  (.
+/*    if (retTyd == null) {
+      // construct a dummy type for the case of syntax error
+      retTyd = new TypedIdent(t, TypedIdent.NoName, new BasicType(t, SimpleType.Int));
+    }*/
+    scope.addFunctionDef(new FunctionDef(
+    	toTextPos(idToken), 
+    	attributes, 
+    	new IdentifierExpression(idToken, idToken.val),
+    	arguments,
+    	returnTid,
+    	body));
+    	//Boogie makes func(a,b:T) into func(a:T,b:T) but func(a,b) as func(<anon0>:a,<anon1>:b)
+    	//Boogie adds body as axiom if "inline" attribute is present 
+  .)
+  .
+
+
+
+
 
 LocalVars<. Scope& scope .>
 = (. unique_ptr<AST::Attributes> attributes; .)
@@ -198,6 +247,11 @@ AttributesIdsTypeWhere<. bool allowAttributes, bool allowWhereClauses, string co
 
 
 /*------------------------------------------------------------------------*/
+TypeAsNameless<. unique_ptr<Variable>& var .>
+= (. unique_ptr<Type> type; .)
+Type<type> (. var = new Variable(move(type)) .)
+.
+
 Type<. unique_ptr<Type>& type .>
 = (.Contract.Ensures(Contract.ValueAtReturn(out ty) != null); IToken/*!*/ tok; ty = dummyType; .)
   (
@@ -254,17 +308,11 @@ MapType<out Bpl.Type/*!*/ ty>
   .)
   .
 
-TypeParams<.out IToken/*!*/ tok, out List<TypeVariable>/*!*/ typeParams.>
-= (.Contract.Ensures(Contract.ValueAtReturn(out tok) != null); Contract.Ensures(Contract.ValueAtReturn(out typeParams) != null); List<IToken>/*!*/ typeParamToks; .)
-  "<"    (.  tok = t;  .)
-    Identifiers<out typeParamToks>
-  ">"
-  (.
-    typeParams = new List<TypeVariable> ();
-    foreach(Token/*!*/ id in typeParamToks){
-      Contract.Assert(id != null);
-      typeParams.Add(new TypeVariable(id, id.val));}
-   .)
+TypeParams<. list<TypeVariable>& typeParams, Token& startToken .>
+=  (. list<Identifier> typeParamIds; .)
+  "<"                         (.  startToken = t;  .)
+    Identifiers<typeParamIds>
+  ">"                         (. for (auto& id : typeParamIds ) typeParams.push_back(new TypeVariable(id)); .)
   .
 
 Types<.List<Bpl.Type>/*!*/ ts.>
@@ -277,105 +325,30 @@ Types<.List<Bpl.Type>/*!*/ ts.>
 
 /*------------------------------------------------------------------------*/
 
-
-/*------------------------------------------------------------------------*/
-FunctionDef<. Scope& scope .>
-= (. IToken/*!*/ z;
-     IToken/*!*/ typeParamTok;
-     var typeParams = new List<TypeVariable>();
-     var arguments = new List<Variable>();
-     TypedIdent/*!*/ tyd;
-     TypedIdent retTyd = null;
-     Bpl.Type/*!*/ retTy;
-     QKeyValue argKv = null;
-     QKeyValue kv = null;
-     Expr definition = null;
-     Expr/*!*/ tmp;
-  .)
-  "function" { Attributes<ref kv> } Indetifier<out z>
-  [ TypeParams<out typeParamTok, out typeParams> ]
-  "("
-  [ VarOrType<out tyd, out argKv>      (. arguments.Add(new Formal(tyd.tok, tyd, true, argKv)); .)
-  { "," VarOrType<out tyd, out argKv>  (. arguments.Add(new Formal(tyd.tok, tyd, true, argKv)); .)
-  } ] ")"
-  (. argKv = null; .)
-  (
-    "returns" "(" VarOrType<out retTyd, out argKv> ")"
-    |
-    ":" Type<out retTy>   (. retTyd = new TypedIdent(retTy.tok, TypedIdent.NoName, retTy); .)
-  )
-  ( "{" Expression<out tmp> (. definition = tmp; .) "}" | ";" )
-  (.
-    if (retTyd == null) {
-      // construct a dummy type for the case of syntax error
-      retTyd = new TypedIdent(t, TypedIdent.NoName, new BasicType(t, SimpleType.Int));
-    }
-    Function/*!*/ func = new Function(z, z.val, typeParams, arguments,
-                                      new Formal(retTyd.tok, retTyd, false, argKv), null, kv);
-    Contract.Assert(func != null);
-    ds.Add(func);
-    bool allUnnamed = true;
-    foreach(Formal/*!*/ f in arguments){
-      Contract.Assert(f != null);
-      if (f.TypedIdent.HasName) {
-        allUnnamed = false;
-        break;
-      }
-    }
-    if (!allUnnamed) {
-      Bpl.Type prevType = null;
-      for (int i = arguments.Count; 0 <= --i; ) {
-        TypedIdent/*!*/ curr = cce.NonNull(arguments[i]).TypedIdent;
-        if (curr.HasName) {
-          // the argument was given as both an identifier and a type
-          prevType = curr.Type;
-        } else {
-          // the argument was given as just one "thing", which syntactically parsed as a type
-          if (prevType == null) {
-            this.errors.SemErr(curr.tok, "the type of the last parameter is unspecified");
-            break;
-          }
-          Bpl.Type ty = curr.Type;
-          var uti = ty as UnresolvedTypeIdentifier;
-          if (uti != null && uti.Arguments.Count == 0) {
-            // the given "thing" was just an identifier, so let's use it as the name of the parameter
-            curr.Name = uti.Name;
-            curr.Type = prevType;
-          } else {
-            this.errors.SemErr(curr.tok, "expecting an identifier as parameter name");
-          }
-        }
-      }
-    }
-    if (definition != null) {
-      // generate either an axiom or a function body
-      if (QKeyValue.FindBoolAttribute(kv, "inline")) {
-        func.Body = definition;
-      } else {
-        ds.Add(func.CreateDefinitionAxiom(definition, kv));
-      }
-    }
-  .)
-  .
-
-VarOrType<out TypedIdent tyd, out QKeyValue kv>
+VarOrType<. unique_ptr<TypedIdentifier>& tid .>
 = (.
+    unique_ptr<Type> type;
+    Token idToken;
     Contract.Ensures(Contract.ValueAtReturn(out tyd) != null);
     string/*!*/ varName = TypedIdent.NoName;
-    Bpl.Type/*!*/ ty;
-    IToken/*!*/ tok;
     kv = null;
   .)
   { Attributes<ref kv> }
-  Type<out ty>    (. tok = ty.tok; .)
-  [ ":"           (. var uti = ty as UnresolvedTypeIdentifier;
+  Type<type>        (. idToken = type.token; .)
+  [ ":"           (. { UTI uti; 
+  							   if (uti=dynamic_cast<UnresolvedTypeIdentifier>(type) && uti.arguments.size()==0)
+  							   	varName = uti.name;
+  							   else
+  									this.SemErr("expected identifier before ':'");
+  							}
+/*  							var uti = ty as UnresolvedTypeIdentifier;
                      if (uti != null && uti.Arguments.Count == 0) {
                        varName = uti.Name;
                      } else {
                        this.SemErr("expected identifier before ':'");
-                     }
+                     }*/
                   .)
-    Type<out ty>
+    Type<type>
   ]
   (. tyd = new TypedIdent(tok, varName, ty); .)
   .
@@ -833,7 +806,7 @@ Proposition<out Expr/*!*/ e>
   .
 
 /*------------------------------------------------------------------------*/
-Identifiers<. vector<Identifier>& ids .>
+Identifiers<. list<Identifier>& ids .>
 = (.Contract.Ensures(Contract.ValueAtReturn(out xs) != null); IToken/*!*/ id; xs = new List<IToken>(); .)
   Indetifier<out id>                 (. xs.Add(id); .)
   { "," Indetifier<out id>           (. xs.Add(id); .)
@@ -1365,4 +1338,8 @@ Float<out BigFloat n>
   .)
   .
 
+
+Identifier<. unique_ptr<Identifier>& id .> = 
+ident (. id = new Identifier(toTextPos(t),t.val); .)
+.
 END BoogiePL.
