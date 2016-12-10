@@ -102,8 +102,8 @@ namespace AST{
 		{}
         unique_ptr<Attributes> attributes;
         unique_ptr<Identifier> name;
-		vector<Variable> parameters;
 		vector<TypeVariable> typeParameters;
+		vector<Variable> parameters;
 		unique_ptr<Variable> returnVar;
 		unique_ptr<Expression> body;
     };

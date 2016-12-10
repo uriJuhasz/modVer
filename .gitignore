@@ -32,3 +32,8 @@
 /src/frontend/boogie/coco/Parser.cpp
 /.settings/sonarlint
 /D2/
+/CMakeCache.txt
+/CMakeFiles
+/build
+/D2
+/Default

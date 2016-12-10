@@ -12,6 +12,8 @@ using namespace frontend::boogie::AST;
 using std::vector;
 using std::list;
 using std::unique_ptr;
+using std::string;
+
 COMPILER BoogiePL
 
 /*--------------------------------------------------------------------------*/
@@ -173,10 +175,7 @@ FunctionDef<. Scope& scope .>
   )
   ( "{" Expression<body> "}" | ";" )
   (.
-/*    if (retTyd == null) {
-      // construct a dummy type for the case of syntax error
-      retTyd = new TypedIdent(t, TypedIdent.NoName, new BasicType(t, SimpleType.Int));
-    }*/
+
     scope.addFunctionDef(new FunctionDef(
     	toTextPos(idToken), 
     	attributes, 
@@ -189,10 +188,16 @@ FunctionDef<. Scope& scope .>
   .)
   .
 
+TypeAsNameless<. unique_ptr<Variable>& var .>
+= (. unique_ptr<Type> type; .)
+Type<type> (. var = new Variable(move(type)) .)
+.
+
+/*------------------------------------------------------------------------*/
 
 
 
-
+/*------------------------------------------------------------------------*/
 LocalVars<. Scope& scope .>
 = (. unique_ptr<AST::Attributes> attributes; .)
   "var"
@@ -200,7 +205,7 @@ LocalVars<. Scope& scope .>
   IdsTypeWheres<. [attributes&,scope&]{TypedIdentifier tid => scope.addVariableDef( new AST::LocalVariable(tid, attributes)) } .> ";"
   .
 
-ProcFormals<.bool incoming, bool allowWhereClauses, out List<Variable>/*!*/ ds.>
+ProcFormals<. bool incoming, bool allowWhereClauses, list<Variable>& ds .>
 = (. Contract.Ensures(Contract.ValueAtReturn(out ds) != null);
      ds = new List<Variable>();
      var dsx = ds;
@@ -224,8 +229,6 @@ BoundVars<.IToken/*!*/ x, out List<Variable>/*!*/ ds.>
   .
 
 /*------------------------------------------------------------------------*/
-
-
 /* AttrsIdsTypeWheres is used with the declarations of formals and bound variables */
 AttrsIdsTypeWheres<. bool allowAttributes, bool allowWhereClauses, string context, System.Action<TypedIdent, QKeyValue> action .>
 =
@@ -247,10 +250,6 @@ AttributesIdsTypeWhere<. bool allowAttributes, bool allowWhereClauses, string co
 
 
 /*------------------------------------------------------------------------*/
-TypeAsNameless<. unique_ptr<Variable>& var .>
-= (. unique_ptr<Type> type; .)
-Type<type> (. var = new Variable(move(type)) .)
-.
 
 Type<. unique_ptr<Type>& type .>
 = (.Contract.Ensures(Contract.ValueAtReturn(out ty) != null); IToken/*!*/ tok; ty = dummyType; .)
@@ -354,30 +353,30 @@ VarOrType<. unique_ptr<TypedIdentifier>& tid .>
   .
 
 /*------------------------------------------------------------------------*/
-Axiom<Scope& scope /*out Axiom m*/>
-= (.Contract.Ensures(Contract.ValueAtReturn(out m) != null); Expr/*!*/ e; QKeyValue kv = null; .)
+Axiom<Scope& scope>
+= (. unique_ptr<Expression> e; unique_ptr<Attributes> attributes; .)
   "axiom"
-   { Attributes<ref kv> }
-   (. IToken/*!*/ x = t; .)
-  Proposition<out e> ";"  (. m = new Axiom(x,e, null, kv); .)
+   { Attributes<Attributes> }
+   (. Token tok = t; .)
+  Proposition<e> ";"  (. scope.addAxiom(new Axiom(tok, attributes, e)); .)
   .
 
 /*------------------------------------------------------------------------*/
-TypeDefs<. Scope& scope /*out List<Declaration> ts*/ .>
-= (. Contract.Ensures(cce.NonNullElements(Contract.ValueAtReturn(out ts))); Declaration/*!*/ decl; QKeyValue kv = null; ts = new List<Declaration/*!*/> (); .)
+TypeDefs<. Scope& scope .>
+= (. unique_ptr<Attributes> attributes; .)
   "type"
-  { Attributes<ref kv> }
-  UserDefinedType<out decl, kv>          (.  ts.Add(decl);  .)
-  { "," UserDefinedType<out decl, kv>    (.  ts.Add(decl);  .) }
+  { Attributes<attributes> }
+  UserDefinedType<scope, attributes>          
+  { "," UserDefinedType<scope, attributes>    
   ";"
   .
 
-UserDefinedType<out Declaration/*!*/ decl, QKeyValue kv>
-= (. Contract.Ensures(Contract.ValueAtReturn(out decl) != null); 
-	Token/*!*/ id; List<IToken>/*!*/ paramTokens = new List<IToken> ();
-     Bpl.Type/*!*/ body = dummyType; bool synonym = false; .)
-  Indetifier<out id>
-  [ WhiteSpaceIdentifiers<out paramTokens> ]
+UserDefinedType<. Scope& scope, unique_ptr<Attributes> attributes .>
+= (. Token id; list<Token> paramTokens;;
+     //Bpl.Type/*!*/ body = dummyType; bool synonym = false; 
+.)
+  Indetifier<id>
+  [ WhiteSpaceIdentifiers<paramTokens> ]
   [
     "=" Type<out body>
     (. synonym = true; .)

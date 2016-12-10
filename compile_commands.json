@@ -1,0 +1,27 @@
+[
+{
+  "directory": "C:/Users/uri/GIT/modVer",
+  "command": "C:/mingw64/mingw32/bin/g++.exe    @CMakeFiles/modVer.dir/includes_CXX.rsp -std=c++14 -pedantic -Wall -g3 -gdwarf-2   -std=gnu++14 -o CMakeFiles/modVer.dir/src/common/Log.cpp.obj -c C:/Users/uri/GIT/modVer/src/common/Log.cpp",
+  "file": "C:/Users/uri/GIT/modVer/src/common/Log.cpp"
+},
+{
+  "directory": "C:/Users/uri/GIT/modVer",
+  "command": "C:/mingw64/mingw32/bin/g++.exe    @CMakeFiles/modVer.dir/includes_CXX.rsp -std=c++14 -pedantic -Wall -g3 -gdwarf-2   -std=gnu++14 -o CMakeFiles/modVer.dir/src/frontend/parser/ParserBase.cpp.obj -c C:/Users/uri/GIT/modVer/src/frontend/parser/ParserBase.cpp",
+  "file": "C:/Users/uri/GIT/modVer/src/frontend/parser/ParserBase.cpp"
+},
+{
+  "directory": "C:/Users/uri/GIT/modVer",
+  "command": "C:/mingw64/mingw32/bin/g++.exe    @CMakeFiles/modVer.dir/includes_CXX.rsp -std=c++14 -pedantic -Wall -g3 -gdwarf-2   -std=gnu++14 -o CMakeFiles/modVer.dir/src/frontend/parser/TextPos.cpp.obj -c C:/Users/uri/GIT/modVer/src/frontend/parser/TextPos.cpp",
+  "file": "C:/Users/uri/GIT/modVer/src/frontend/parser/TextPos.cpp"
+},
+{
+  "directory": "C:/Users/uri/GIT/modVer",
+  "command": "C:/mingw64/mingw32/bin/g++.exe    @CMakeFiles/modVer.dir/includes_CXX.rsp -std=c++14 -pedantic -Wall -g3 -gdwarf-2   -std=gnu++14 -o CMakeFiles/modVer.dir/src/frontend/boogie/coco/Parser.cpp.obj -c C:/Users/uri/GIT/modVer/src/frontend/boogie/coco/Parser.cpp",
+  "file": "C:/Users/uri/GIT/modVer/src/frontend/boogie/coco/Parser.cpp"
+},
+{
+  "directory": "C:/Users/uri/GIT/modVer",
+  "command": "C:/mingw64/mingw32/bin/g++.exe    @CMakeFiles/modVer.dir/includes_CXX.rsp -std=c++14 -pedantic -Wall -g3 -gdwarf-2   -std=gnu++14 -o CMakeFiles/modVer.dir/src/frontend/boogie/coco/Scanner.cpp.obj -c C:/Users/uri/GIT/modVer/src/frontend/boogie/coco/Scanner.cpp",
+  "file": "C:/Users/uri/GIT/modVer/src/frontend/boogie/coco/Scanner.cpp"
+}
+]
