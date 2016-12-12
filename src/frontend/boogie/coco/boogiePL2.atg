@@ -28,6 +28,10 @@ void parse(){
 
 static TextPosition toTextPos(const Token& t){ return TextPosition(t.line,t.col); } 
 
+static string toIdentifier(const string& s){
+    return s.starts_with('\\') ? s.sub_str(1) : s;
+}
+
 
 
 /*--------------------------------------------------------------------------*/
@@ -93,27 +97,28 @@ BoogiePL
 
 /*------------------------------------------------------------------------*/
 ConstantsDef<. AST::Scope& scope .>
-= (. Token startToken; 
-	  vector<AST::Identifier> ids;
-	  unique_ptr<AST::Type> type;
+= (. TextPosition pos; 
      bool unique = false; 
+     vector<AST::Identifier> ids;
+     unique_ptr<AST::Type> type;
      unique_ptr<AST::Attributes> attributes;
      unique_ptr<AST::ConstantOrderSpec> orderSpec = new ConstantOrderSpec();
   .)
   
-  "const"                                   (. startToken = *t; .)
+  "const"                                   (. pos = toTextPos(*t); .)
   { Attributes<attributes> }
   [ "unique"                                (. unique = true;  .) ]
   Identifiers<ids> ":" Type<type>
   [ OrderSpec<orderSpec> ]
   (.  for (const auto& id : ids) 
-  			scope.addVariableDef(unique_ptr<Variable>(
-  				new AST::Constant(toTextPos(startToken), 
-  				attributes->clone(), 
-  				id, 
-  				type->clone(),
-  				unique, 
-  				orderSpec->clone() )); 
+  			scope.addVariableDef(
+  				new AST::Constant(
+                                    pos, 
+                                    attributes->clone(), 
+                                    id, 
+                                    type->clone(),
+                                    unique, 
+                                    orderSpec->clone()); 
   .)
   ";"
   .
@@ -145,7 +150,9 @@ IdsTypeWheres<. void action(unique_ptr<TypedIdentifier>) .>
 
 /* context is allowed to be null if allowWhereClauses is true */
 IdsTypeWhere<. void action(unique_ptr<TypedIdentifier>) .>
-	= (. vector<Identifier> ids;  unique_ptr<Type> type;  unique_ptr<Expression> whereExp; .)
+  =                                 (. list<Identifier> ids;  
+                                       unique_ptr<Type> type;  
+                                       unique_ptr<Expression> whereExp; .)
   Identifiers<ids> ":" Type<type>
   [ "where" Expression<whereExp>  ]
 	  (. for (auto& id : ids)
@@ -157,7 +164,7 @@ IdsTypeWhere<. void action(unique_ptr<TypedIdentifier>) .>
 FunctionDef<. Scope& scope .>
 = (. Token idToken;
      Token typeParamToken;
-     unique_ptr<list<TypeVariable>> typeParams;
+     unique_ptr<TypeParameters> typeParams;
      unique_ptr<list<Variable>> arguments;
      unique_ptr<TypedIdentifier> tid;
      unique_ptr<TypedIdentifier> returnTID = null;
@@ -238,8 +245,8 @@ AttrsIdsTypeWheres<. bool allowAttributes, bool allowWhereClauses, string contex
 
 
 AttributesIdsTypeWhere<. bool allowAttributes, bool allowWhereClauses, string context, System.Action<TypedIdent, QKeyValue> action .>
-= (. QKeyValue kv = null; .)
-  { Attributes<ref kv>    (. if (!allowAttributes) {
+= (. unique_ptr<Attributes> attrbutes; .)
+  { Attributes<attributes>    (. if (!allowAttributes) {
                               kv = null;
                               this.SemErr("attributes are not allowed on " + context);
                             }
@@ -256,7 +263,7 @@ Type<. unique_ptr<Type>& type .>
   (
     TypeAtom<out ty>
   |
-    Indetifier<out tok>       (. List<Bpl.Type>/*!*/ args = new List<Bpl.Type> (); .)
+    Identifier<out tok>       (. List<Bpl.Type>/*!*/ args = new List<Bpl.Type> (); .)
     [ TypeArgs<args> ]   (. ty = new UnresolvedTypeIdentifier (tok, tok.val, args); .)
   |
     MapType<out ty>
@@ -269,7 +276,7 @@ TypeArgs<.List<Bpl.Type>/*!*/ ts.>
     TypeAtom<out ty>     (. ts.Add(ty); .)
     [ TypeArgs<ts> ]
   |
-    Indetifier<out tok>       (. List<Bpl.Type>/*!*/ args = new List<Bpl.Type> ();
+    Identifier<out tok>       (. List<Bpl.Type>/*!*/ args = new List<Bpl.Type> ();
                             ts.Add(new UnresolvedTypeIdentifier (tok, tok.val, args)); .)
     [ TypeArgs<ts> ]
   |
@@ -290,15 +297,15 @@ TypeAtom<out Bpl.Type/*!*/ ty>
   )
   .
 
-MapType<out Bpl.Type/*!*/ ty>
-= (.Contract.Ensures(Contract.ValueAtReturn(out ty) != null); IToken tok = null;
-     IToken/*!*/ nnTok;
+MapType<. unique_ptr<Type>& type .>
+= (. Token* tok = nullptr;
+     Token nnTok;
      List<Bpl.Type>/*!*/ arguments = new List<Bpl.Type>();
      Bpl.Type/*!*/ result;
-     List<TypeVariable>/*!*/ typeParameters = new List<TypeVariable>();
+     list<TypeVariable> typeParameters;
    .)
-  [ TypeParams<out nnTok, out typeParameters> (. tok = nnTok; .) ]
-  "["                                         (.  if (tok == null) tok = t;  .)
+  [ TypeParams<tok, typeParameters> ]
+  "["                                         (.  if (tok == nullptr) tok = t;  .)
     [ Types<arguments> ]
   "]"
   Type<out result>
@@ -307,7 +314,7 @@ MapType<out Bpl.Type/*!*/ ty>
   .)
   .
 
-TypeParams<. list<TypeVariable>& typeParams, Token& startToken .>
+TypeParams<. Token& startToken, list<TypeVariable>& typeParams .>
 =  (. list<Identifier> typeParamIds; .)
   "<"                         (.  startToken = t;  .)
     Identifiers<typeParamIds>
@@ -367,7 +374,7 @@ TypeDefs<. Scope& scope .>
   "type"
   { Attributes<attributes> }
   UserDefinedType<scope, attributes>          
-  { "," UserDefinedType<scope, attributes>    
+  { "," UserDefinedType<scope, attributes> }    
   ";"
   .
 
@@ -375,7 +382,7 @@ UserDefinedType<. Scope& scope, unique_ptr<Attributes> attributes .>
 = (. Token id; list<Token> paramTokens;;
      //Bpl.Type/*!*/ body = dummyType; bool synonym = false; 
 .)
-  Indetifier<id>
+  Identifier<id>
   [ WhiteSpaceIdentifiers<paramTokens> ]
   [
     "=" Type<out body>
@@ -447,7 +454,7 @@ ProcSignature<.bool allowWhereClausesOnFormals, out IToken/*!*/ name, out List<T
      IToken/*!*/ typeParamTok; typeParams = new List<TypeVariable>();
      outs = new List<Variable>(); kv = null; .)
   { Attributes<ref kv> }
-  Indetifier<out name>
+  Identifier<out name>
   [ TypeParams<out typeParamTok, out typeParams> ]
   ProcFormals<true, allowWhereClausesOnFormals, out ins>
   [ "returns" ProcFormals<false, allowWhereClausesOnFormals, out outs> ]
@@ -644,7 +651,7 @@ BreakCmd<out BreakCmd/*!*/ bcmd>
      string breakLabel = null;
   .)
   "break"             (. x = t; .)
-  [ Indetifier<out y>      (. breakLabel = y.val; .)
+  [ Identifier<out y>      (. breakLabel = y.val; .)
   ] ";"               (. bcmd = new BreakCmd(x, breakLabel); .)
   .
 
@@ -694,7 +701,7 @@ LabelOrAssign<out Cmd c, out IToken label>
      List<Expr/*!*/>/*!*/ rhss;
      List<Expr/*!*/>/*!*/ indexes;
   .)
-  Indetifier<out id>              (. x = t; .)
+  Identifier<out id>              (. x = t; .)
   ( ":"                      (. c = null;  label = x; .)
 
   | (. lhss = new List<AssignLhs/*!*/>(); .)
@@ -704,7 +711,7 @@ LabelOrAssign<out Cmd c, out IToken label>
     (. lhss.Add(lhs); .)
 
     { ","
-      Indetifier<out id>
+      Identifier<out id>
       (. lhs = new SimpleAssignLhs(id, new IdentifierExpr(id, id.val)); .)
       { MapAssignIndex<out y, out indexes>    (. lhs = new MapAssignLhs(y, lhs, indexes); .) }
       (. lhss.Add(lhs); .)
@@ -776,7 +783,7 @@ CallParams<bool isAsync, bool isFree, QKeyValue kv, IToken x, out Cmd c>
     IToken p;
 	c = null;
   .)
-  Indetifier<out first>
+  Identifier<out first>
     ( "("
       [ Expression<out en>       (. es.Add(en); .)
         { "," Expression<out en> (. es.Add(en); .)
@@ -785,11 +792,11 @@ CallParams<bool isAsync, bool isFree, QKeyValue kv, IToken x, out Cmd c>
       ")"                         (. c = new CallCmd(x, first.val, es, ids, kv); ((CallCmd) c).IsFree = isFree; ((CallCmd) c).IsAsync = isAsync; .)
     |
                                   (. ids.Add(new IdentifierExpr(first, first.val)); .)
-      [ "," Indetifier<out p>  (. ids.Add(new IdentifierExpr(p, p.val)); .)
-        { "," Indetifier<out p>  (. ids.Add(new IdentifierExpr(p, p.val)); .)
+      [ "," Identifier<out p>  (. ids.Add(new IdentifierExpr(p, p.val)); .)
+        { "," Identifier<out p>  (. ids.Add(new IdentifierExpr(p, p.val)); .)
         }
       ] ":="
-      Indetifier<out first> "("
+      Identifier<out first> "("
       [ Expression<out en>       (. es.Add(en); .)
         { "," Expression<out en> (. es.Add(en); .)
         }
@@ -807,16 +814,16 @@ Proposition<out Expr/*!*/ e>
 /*------------------------------------------------------------------------*/
 Identifiers<. list<Identifier>& ids .>
 = (.Contract.Ensures(Contract.ValueAtReturn(out xs) != null); IToken/*!*/ id; xs = new List<IToken>(); .)
-  Indetifier<out id>                 (. xs.Add(id); .)
-  { "," Indetifier<out id>           (. xs.Add(id); .)
+  Identifier<out id>                 (. xs.Add(id); .)
+  { "," Identifier<out id>           (. xs.Add(id); .)
   }
   .
 
 /*------------------------------------------------------------------------*/
 WhiteSpaceIdentifiers<.out List<IToken>/*!*/ xs.>
 = (. Contract.Ensures(Contract.ValueAtReturn(out xs) != null); IToken/*!*/ id; xs = new List<IToken>(); .)
-  Indetifier<out id>                 (. xs.Add(id); .)
-  { Indetifier<out id>               (. xs.Add(id); .)
+  Identifier<out id>                 (. xs.Add(id); .)
+  { Identifier<out id>               (. xs.Add(id); .)
   }
   .
 
@@ -1018,13 +1025,13 @@ CoercionExpression<out Expr/*!*/ e>
   .
 
 /*------------------------------------------------------------------------*/
-ArrayExpression<out Expr/*!*/ e>
-= (. Contract.Ensures(Contract.ValueAtReturn(out e) != null); IToken/*!*/ x;
+ArrayExpression<. unique_ptr<Expression>& e .>
+= (. Token tok;
      Expr/*!*/ index0 = dummyExpr; Expr/*!*/ e1;
      bool store; bool bvExtract;
      List<Expr>/*!*/ allArgs = dummyExprSeq;
   .)
-  AtomExpression<out e>
+  AtomExpression<e>
   { "["        (. x = t; allArgs = new List<Expr> ();
                   allArgs.Add(e);
                   store = false; bvExtract = false; .)
@@ -1064,69 +1071,46 @@ ArrayExpression<out Expr/*!*/ e>
 
 
 /*------------------------------------------------------------------------*/
-AtomExpression<out Expr/*!*/ e>
-= (. Contract.Ensures(Contract.ValueAtReturn(out e) != null); IToken/*!*/ x; int n; BigNum bn; BigDec bd; BigFloat bf;
-     List<Expr>/*!*/ es;  List<Variable>/*!*/ ds;  Trigger trig;
-     List<TypeVariable>/*!*/ typeParams;
-     IdentifierExpr/*!*/ id;
-     QKeyValue kv;
-     e = dummyExpr;
-     List<Variable>/*!*/ locals;
-     List<Block/*!*/>/*!*/ blocks;
+AtomExpression<. unique_ptr<Expression>& e .>
+= (. TextPosition pos;
+     list<Expression> args;
+     unique_ptr<IdentifierExpression> ide;
+     unique_ptr<Identifier> id;
+     unique_ptr<Function>   func;
+     Binder b;
   .)
-  ( "false"           (. e = new LiteralExpr(t, false); .)
-  | "true"            (. e = new LiteralExpr(t, true); .)
-  | Nat<out bn>            (. e = new LiteralExpr(t, bn); .)
-  | Dec<out bd>            (. e = new LiteralExpr(t, bd); .)
-		| Float<out bf>            (. e = new LiteralExpr(t, bf); .)
-  | BvLit<out bn, out n> (. e = new LiteralExpr(t, bn, n); .)
+( 
+    "false"           (. e = new LiteralExpression(toTextPos(t), false); .)
+  | "true"            (. e = new LiteralExpression(toTextPos(t), true); .)
+  | NatE<e>
+  | Dec<e>            
+  | Float<e>
+  | BvLit<e>
 
-  | Indetifier<out x>            (. id = new IdentifierExpr(x, x.val);  e = id; .)
-    [ "("
-      ( Expressions<out es> (. e = new NAryExpr(x, new FunctionCall(id), es); .)
-      | /* empty */         (. e = new NAryExpr(x, new FunctionCall(id), new List<Expr>()); .)
-      )
-      ")"
-    ]
+  | IdentifierE<ide>            (. id = ide->identifier->clone(); e = move(ide) .)
+    [ "(" Expressions<args> ")" (. e = new FAExpression(e.pos, new FunctionCall(id), move(args)); .) ]
 
-  | "old"                   (. x = t; .)
-    "("
-    Expression<out e>
-    ")"                     (. e = new OldExpr(x, e); .)
+  | "old"                    (. pos = toTextPos(t); .)
+    "(" Expression<e> ")"    (. e = new OldExpression(pos, e); .)
 
-  | "int"                   (. x = t; .)
-    "("
-    Expression<out e>
-    ")"                     (. e = new NAryExpr(x, new ArithmeticCoercion(x, ArithmeticCoercion.CoercionType.ToInt), new List<Expr>{ e }); .)
+  | ("int" |                 (. func = new ArithmeticCoercion(toTextPos(t), ArithmeticCoercion.CoercionType.ToInt)  .)
+     "real" )                (. func = new ArithmeticCoercion(toTextPos(t), ArithmeticCoercion.CoercionType.ToReal) .)
+    "(" Expression<e> ")"    (. e = new FAExpression(func.pos, func, e); .)
 
-  | "real"                  (. x = t; .)
-    "("
-    Expression<out e>
-    ")"                     (. e = new NAryExpr(x, new ArithmeticCoercion(x, ArithmeticCoercion.CoercionType.ToReal), new List<Expr>{ e }); .)
+  | "(" (
+      Expression<e>                 (. if (e is BvBounds) this.SemErr("parentheses around bitvector bounds are not allowed"); .)
+      | ( 
+          ( Forall                            (. binder = Binder::forall; .)
+          | Exists                            (. binder = Binder::exists; .)
+          | Lambda                            (. binder = Binder::lambda; .)
+        )                                     (. pos = toTextPos(t); .)
+        QuantifierBody<tok,binder,e> )
+    ) ")"
 
-		| "(" ( Expression<out e>                 (. if (e is BvBounds)
-                                                 this.SemErr("parentheses around bitvector bounds " +
-                                                        "are not allowed"); .)
-        | Forall                            (. x = t; .)
-          QuantifierBody<x, out typeParams, out ds, out kv, out trig, out e>
-                                            (. if (typeParams.Count + ds.Count > 0)
-                                                 e = new ForallExpr(x, typeParams, ds, kv, trig, e); .)
-        | Exists                            (. x = t; .)
-          QuantifierBody<x, out typeParams, out ds, out kv, out trig, out e>
-                                            (. if (typeParams.Count + ds.Count > 0)
-                                                 e = new ExistsExpr(x, typeParams, ds, kv, trig, e); .)
-        | Lambda                            (. x = t; .)
-          QuantifierBody<x, out typeParams, out ds, out kv, out trig, out e>
-                                            (. if (trig != null)
-                                                 SemErr("triggers not allowed in lambda expressions");
-                                               if (typeParams.Count + ds.Count > 0)
-                                                 e = new LambdaExpr(x, typeParams, ds, kv, e); .)
-        )
-    ")"
-  | IfThenElseExpression<out e>
-  | CodeExpression<out locals, out blocks> (. e = new CodeExpr(locals, blocks); .)
-  )
-  .
+  | IfThenElseExpression<e>
+  | CodeExpression<e>
+)
+.
 
 CodeExpression<.out List<Variable>/*!*/ locals, out List<Block/*!*/>/*!*/ blocks.>
 = (. Contract.Ensures(Contract.ValueAtReturn(out locals) != null); Contract.Ensures(cce.NonNullElements(Contract.ValueAtReturn(out blocks))); locals = new List<Variable>(); Block/*!*/ b;
@@ -1149,7 +1133,7 @@ SpecBlock<out Block/*!*/ b>
      b = dummyBlock;
      Expr/*!*/ e;
   .)
-  Indetifier<out x> ":"
+  Identifier<out x> ":"
   { LabelOrCmd<out c, out label>
                        (. if (c != null) {
                             Contract.Assert(label == null);
@@ -1231,33 +1215,28 @@ AttributeParameter<out object/*!*/ o>
   )
   .
 
-IfThenElseExpression<out Expr/*!*/ e>
-= (. Contract.Ensures(Contract.ValueAtReturn(out e) != null);
-     IToken/*!*/ tok;
-     Expr/*!*/ e0, e1, e2;
-     e = dummyExpr; .)
-  "if" (. tok = t; .) Expression<out e0> "then" Expression<out e1> "else" Expression<out e2>
-  (. e = new NAryExpr(tok, new IfThenElse(tok), new List<Expr>{ e0, e1, e2 }); .)
+IfThenElseExpression<. unique_ptr<Expression>& e>
+= (. Token tok;
+     unique_ptr<Expression> e0, e1, e2; .)
+  "if" (. tok = t; .) Expression<e0> "then" Expression<e1> "else" Expression<e2>
+  (. e = new FAExpression(tok, new IfThenElse(tok), new List<Expr>{ e0, e1, e2 }); .)
   .
 
 
-QuantifierBody<.IToken/*!*/ q, out List<TypeVariable>/*!*/ typeParams, out List<Variable>/*!*/ ds,
-               out QKeyValue kv, out Trigger trig, out Expr/*!*/ body.>
-= (. Contract.Requires(q != null); Contract.Ensures(Contract.ValueAtReturn(out typeParams) != null); Contract.Ensures(Contract.ValueAtReturn(out ds) != null); Contract.Ensures(Contract.ValueAtReturn(out body) != null);
-     trig = null; typeParams = new List<TypeVariable> ();
-     IToken/*!*/ tok;
-     kv = null;
-     ds = new List<Variable> ();
-  .)
+QuantifierBody<. TextPosition pos, Binder binder, unique_ptr<Expression>& e .>
+= (. TextPosition pos2;
+     list<TypeVariable>         typeVars;
+     list<Variable>             vars;
+     unique_ptr<Attributes>     attributes;
+     unique_ptr<Triggers>       triggers;    
+     unique_ptr<Expression>     ie                 .)
   (
-     TypeParams<out tok, out typeParams>
-     [ BoundVars<q, out ds> ]
-  |
-     BoundVars<q, out ds>
-  )
-  QSep
-  { AttributeOrTrigger<ref kv, ref trig> }
-  Expression<out body>
+    (   TypeParams<pos2,typeParams> [ BoundVars<pos, vars> ]
+      | BoundVars<pos, vars> )
+    QSep
+    { AttributeOrTrigger<attributes, triggers> }
+    Expression<ie>
+  ) (. e = new BinderExpression(pos, binder, move(attributes), move(triggers), move(typeVars), move(vars), move(ie)); .)
   .
 
 Forall = "forall" | '\u2200'.
@@ -1266,34 +1245,37 @@ Lambda = "lambda" | '\u03bb'.
 QSep = "::" | '\u2022'.
 
 /*------------------------------------------------------------------------*/
-Indetifier<out IToken/*!*/ x>
-=(.Contract.Ensures(Contract.ValueAtReturn(out x) != null);.)
-  ident            (.  x = t;
-                       if (x.val.StartsWith("\\"))
-                         x.val = x.val.Substring(1);
-                    .)
-  .
+IdentifierExpression<. unique_ptr<Expression>& e .> = 
+(. unique_ptr<Identifier> id .)
+Identifier< id >  (. e = new IdentifierExpression(id); .)
+.
+Identifier<. unique_ptr<Identifier>& id .> = 
+ident (. id = new Identifier(toTextPos(t),toIdentifier(t.val)); .)
+.
 
 /*------------------------------------------------------------------------*/
-Nat<out BigNum n>
+NatE<. unique_ptr<LiteralExpression>& le .>
+= (. Integer i; Token tok.)
+  Nat<i,t>  (. le = new LiteralExpression(tok,i); .)
+  .
+
+Nat<. Integer& n .>
 =
   digits
   (. try {
-       n = BigNum.FromString(t.val);
-     } catch (FormatException) {
+       n = Integer(t.val);
+     } catch (std::runtime_exception&) {
        this.SemErr("incorrectly formatted number");
-       n = BigNum.ZERO;
+       n = 0;
      }
   .)
   .
 
 /*------------------------------------------------------------------------*/
-Dec<out BigDec n>
+Dec<. unique_ptr<LiteralExpression>& le .>
 = (. string s = ""; .)
-  (
-    decimal   (. s = t.val; .)
-  |
-    dec_float     (. s = t.val; .)
+  (   decimal     (. s = t.val; .)
+    | dec_float   (. s = t.val; .)
   )
   (. try {
        n = BigDec.FromString(s);
@@ -1305,40 +1287,46 @@ Dec<out BigDec n>
   .
 
 /*------------------------------------------------------------------------*/
-BvLit<out BigNum n, out int m>
+BvLit<. unique_ptr<LiteralExpression>& le .>
 =
   bvlit
   (.
-     int pos = t.val.IndexOf("bv");
-     string a = t.val.Substring(0, pos);
-     string b = t.val.Substring(pos + 2);
+     string s = t.val;
+     auto pos = s.find("bv");
+     assert(pos>=0);
+     string a = s.substring(0,pos);
+     string b = s.substring(pos + 2);
+     Integer n;
      try {
-       n = BigNum.FromString(a);
-       m = Convert.ToInt32(b);
-     } catch (FormatException) {
+       n = Integer(a);
+       m = Integer(b);
+     } catch (std::runtime_exception& ) {
        this.SemErr("incorrectly formatted bitvector");
-       n = BigNum.ZERO;
+       n = 0;
        m = 0;
      }
+    le = new LiteralExpression(toTextPos(t), new BitVectorLiteral(n,m));
   .)
   .
 
-Float<out BigFloat n>
+FloatE<. unique_ptr<LiteralExpression>& le .> = 
+(. Rational r; TextPosition pos .)
+Float<r> (. return new LiteralExpression(pos,r); .)
+.
+
+Float<. Rational& r, TextPosition& pos .>
 = (. string s = ""; .)
   (
-    float   (. s = t.val; .)
+    float   (. s = t.val; pos = toTextPos(t); .)
   )
   (. try {
-       n = BigFloat.FromString(s);
-     } catch (FormatException e) {
+       r = Rational(s);
+     } catch (std::runtime_exception& e) {
        this.SemErr("incorrectly formatted floating point, " + e.Message);
-       n = BigFloat.ZERO;
+       r = 0;
      }
   .)
   .
 
 
-Identifier<. unique_ptr<Identifier>& id .> = 
-ident (. id = new Identifier(toTextPos(t),t.val); .)
-.
 END BoogiePL.
