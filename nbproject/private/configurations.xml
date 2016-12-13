@@ -164,6 +164,7 @@
       <df name="test">
       </df>
     </df>
+    <itemPath>src/frontend/boogie/coco/test.atg</itemPath>
   </logicalFolder>
   <projectmakefile>Makefile</projectmakefile>
   <confs>

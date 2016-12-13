@@ -58,6 +58,8 @@ CHARACTERS
   nondigit = letter + special.
   nonquote = letter + digit + space + glyph.
 
+  leftBracket = '['.
+
 $namespace=frontend::boogie::parser
 
 /*------------------------------------------------------------------------*/
@@ -263,16 +265,16 @@ AttributesIdsTypeWhere<. bool allowAttributes, bool allowWhereClauses, string co
 /*------------------------------------------------------------------------*/
 
 Type<. unique_ptr<Type>& type .>
-=   TypeAtom<type>
+= (  TypeAtom<type>
   | TypeConstructor<type>
-  | MapType<type>
+  | MapType<type>)
 .
 
 TypeAtom<. unique_ptr<Type>& type .>
 =   "int"              (. type = new BasicType(t, SimpleType.Int); .)
   | "real"             (. type = new BasicType(t, SimpleType.Real); .)
   | "bool"             (. type = new BasicType(t, SimpleType.Bool); .)
-  | "(" Type<out type> ")"
+  | "(" Type<type> ")"
  .
 
 TypeConstructor<. unique_ptr<Type>& type .>
@@ -283,16 +285,14 @@ TypeConstructor<. unique_ptr<Type>& type .>
 .
 
 TypeArgs<. list<unique_ptr<Type> types .>
-= (. IToken/*!*/ tok; Bpl.Type/*!*/ ty; .)
+= (. unique_ptr<Identifier> id;
+     unique_ptr<Type> type;  .)
   (
-    TypeAtom<out ty>     (. ts.Add(ty); .)
-    [ TypeArgs<ts> ]
-  |
-    Identifier<out tok>       (. List<Bpl.Type>/*!*/ args = new List<Bpl.Type> ();
-                            ts.Add(new UnresolvedTypeIdentifier (tok, tok.val, args)); .)
-    [ TypeArgs<ts> ]
-  |
-    MapType<out ty>      (. ts.Add(ty); .)
+    ((  TypeAtom<type>    (. types.push_back(move(type)); .)
+      | Identifier<id>    (. types.push_back(new UnresolvedTypeIdentifier(id)); .)
+    )
+    [ TypeArgs<ts> ] )
+  | MapType<type>      (. types.push_back(move(type)); .)
   )
   .
 
@@ -506,8 +506,8 @@ BigBlock<. list<unique_ptr<BigBlock>>& bigBlocks .>
      list<unique_ptr<Cmd>> cmds;
      unique_ptr<BBEndCmd> endCmd;
   .)
-    [ IF(isLabel())
-       Label<label> | () ]
+    ( IF(isLabel())
+       Label<label> | () )
     { Cmd<cmds> }
     ( StructuredCmd<endCmd> | TransferCmd<endCmd> )
     (. bigBlocks.push_back(new BigBlock(label,cmds, endCmd)); .)
@@ -789,23 +789,25 @@ ExpressionsCS<. list<unique_ptr<Expression>>& es.>
   { "," Expression<e> (. es.push_back(e) .) }
  .
 
-Expression<. unique_ptr<Expression>& e0.>
-= (. TextPosition pos;
-     unique_ptr<Expression> e1; 
-  .)
-  ImpliesExpression<false, e0>
-  { EquivOp        (. tok = t; .)
-    ImpliesExpression<false, e1>
-                   (. e0 = Expression.make(tok, BinaryOperator.Opcode.Iff, e0, e1); .)
-  }
-  .
+Expression<. unique_ptr<Expression>& e .>
+= 
+    (IF (isUnaryIfExpression()) UnaryITEExpression<e> )
+  | ( ImpliesExpression<false, e> { ExpressionR<e> } )
+.
 
+ExpressionR<. unique_ptr<Expression>& e0 .>
+= (. TextPosition pos; 
+     unique_ptr<Expression> e1 .)
+  EquivOp                       (. pos = t; .)
+  ImpliesExpression<false, e1>  (. e0 = new Expression( pos, Operator.iff(), e0, e1 ) .)
+  .
 
 EquivOp = "<==>" | '\u21d4'.
 
 
 /*------------------------------------------------------------------------*/
-ImpliesExpression<bool noExplies, out Expr/*!*/ e0>
+ImpliesExpression<. bool noExplies, out Expr/*!*/ e0 .>
+// = "ab" LogicalExpression<e0> "ba".
 = (. Contract.Ensures(Contract.ValueAtReturn(out e0) != null); IToken/*!*/ x; Expr/*!*/ e1; .)
   LogicalExpression<out e0>
   [
@@ -827,6 +829,7 @@ ImpliesExpression<bool noExplies, out Expr/*!*/ e0>
     }
   ]
   .
+
 
 ImpliesOp = "==>" | '\u21d2'.
 ExpliesOp = "<==" | '\u21d0'.
@@ -935,8 +938,8 @@ Power<out Expr/*!*/ e0>
   .
 
 /*------------------------------------------------------------------------*/
-UnaryExpression<out Expr/*!*/ e>
-= (. Contract.Ensures(Contract.ValueAtReturn(out e) != null); IToken/*!*/ x;
+UnaryExpression<. unique_ptr<Expression>& e .>
+= (.  IToken x;
      e = dummyExpr;
   .)
   ( "-"                        (. x = t; .)
@@ -944,6 +947,20 @@ UnaryExpression<out Expr/*!*/ e>
   | NegOp                      (. x = t; .)
     UnaryExpression<out e>     (. e = Expr.Unary(x, UnaryOperator.Opcode.Not, e); .)
   | CoercionExpression<out e>
+  )
+  .
+
+UnaryITEExpression<. unique_ptr<Expression>& e .>
+= (. TextPosition pos;
+     Operand op;
+     e = dummyExpr;
+  .)
+  (
+    ( (   "-"                      (. op = Operand::Minus; .)
+        | NegOp                    (. op = Operand::Negate; .)
+      )                            (. pos = t; .)
+      UnaryITEExpression<e> )      (. e = new Expression(op, e); .) 
+  | IfThenElseExpression<e>
   )
   .
 
@@ -966,7 +983,7 @@ CoercionExpression<out Expr/*!*/ e>
   ArrayExpression<out e>
   { ":"                     (. x = t; .)
     (
-      Type<out coercedTo>   (. e = Expr.CoerceType(x, e, coercedTo); .)
+       Type<out coercedTo>   (. e = Expr.CoerceType(x, e, coercedTo); .)
     |
       Nat<out bn>           /* This means that we really look at a bitvector
                                expression t[a:b] */
@@ -989,7 +1006,12 @@ ArrayExpression<. unique_ptr<Expression>& e .>
      List<Expr>/*!*/ allArgs = dummyExprSeq;
   .)
   AtomExpression<e>
-  { "["        (. x = t; allArgs = new List<Expr> ();
+  { ArrayExpressionR<e> }
+.
+
+ArrayExpressionR<. unique_ptr<Expression>& e .>
+=
+  "["        (. x = t; allArgs = new List<Expr> ();
                   allArgs.Add(e);
                   store = false; bvExtract = false; .)
       [
@@ -1023,51 +1045,74 @@ ArrayExpression<. unique_ptr<Expression>& e .>
        else
          e = new NAryExpr(x, new MapSelect(x, allArgs.Count - 1), allArgs);
     .)
-  }
   .
 
 
 /*------------------------------------------------------------------------*/
 AtomExpression<. unique_ptr<Expression>& e .>
-= (. TextPosition pos;
-     list<Expression> args;
-     unique_ptr<IdentifierExpression> ide;
-     unique_ptr<Identifier> id;
-     unique_ptr<Function>   func;
-     Binder b;
-  .)
+= 
 ( 
+    LiteralExpression<e>
+  | FAExpression<e>
+  | OldExpression<e>
+  | CastExpression<e>
+  | BinderOrParenExpression<e>
+//  | IfThenElseExpression<e>
+  | CodeExpression<e>
+)
+.
+
+LiteralExpression<. unique_ptr<Expression>& e .>
+= 
     "false"           (. e = new LiteralExpression(toTextPos(t), false); .)
   | "true"            (. e = new LiteralExpression(toTextPos(t), true); .)
   | NatE<e>
   | Dec<e>            
   | FloatE<e>
   | BvLit<e>
+.
 
-  | IdentifierExpression<ide>    (. id = ide->identifier->clone(); e = move(ide) .)
+FAExpression<. unique_ptr<Expression>& e .>
+= (. list<Expression> args;
+     unique_ptr<IdentifierExpression> ide;
+     unique_ptr<Identifier> id; 
+  .)
+  IdentifierExpression<ide>    (. id = ide->identifier->clone(); e = move(ide) .)
     [ "(" Expressions<args> ")"  (. e = new FAExpression(e.pos, new FunctionCall(id), move(args)); .) ]
+.
 
-  | "old"                    (. pos = toTextPos(t); .)
+OldExpression<. unique_ptr<Expression>& e .>
+= (.  TextPosition pos; .)
+  "old"                    (. pos = toTextPos(t); .)
     "(" Expression<e> ")"    (. e = new OldExpression(pos, e); .)
+.
 
-  | ("int" |                 (. func = new ArithmeticCoercion(toTextPos(t), ArithmeticCoercion.CoercionType.ToInt)  .)
-     "real" )                (. func = new ArithmeticCoercion(toTextPos(t), ArithmeticCoercion.CoercionType.ToReal) .)
-    "(" Expression<e> ")"    (. e = new FAExpression(func.pos, func, e); .)
-
-  | "(" (
+BinderOrParenExpression<. unique_ptr<Expression>& e .>
+= (. TextPosition pos;
+     Binder b;
+  .)
+  "(" (
       Expression<e>                 (. if (e is BvBounds) this.SemErr("parentheses around bitvector bounds are not allowed"); .)
       | ( 
           ( Forall                            (. binder = Binder::forall; .)
           | Exists                            (. binder = Binder::exists; .)
           | Lambda                            (. binder = Binder::lambda; .)
-        )                                     (. pos = toTextPos(t); .)
-        QuantifierBody<tok,binder,e> )
+          )                                   (. pos = toTextPos(t); .)
+        QuantifierBody<pos,binder,e> )
     ) ")"
-
-  | IfThenElseExpression<e>
-  | CodeExpression<e>
-)
 .
+
+
+
+
+
+CastExpression<. unique_ptr<Expression>& e .>
+= (. unique_ptr<Function>   func;.)
+    ("int" |               (. func = new ArithmeticCoercion(toTextPos(t), ArithmeticCoercion.CoercionType.ToInt)  .)
+     "real"                (. func = new ArithmeticCoercion(toTextPos(t), ArithmeticCoercion.CoercionType.ToReal) .) )
+  "(" Expression<e> ")"    (. e = new FAExpression(func.pos, func, e); .)
+.
+
 
 CodeExpression<. unique_ptr<Expression>& e .>
 = (. TextPosition pos;
