@@ -100,7 +100,7 @@ namespace ParseTree{
     class MapType : public Type{
     public:
         MapType(TypeParameters&& typeParameters, vector<pType>&& argumentTypes, pType&& resultType)
-                : TypeParameters(move(typeParameters)), argumentTypes(move(argumentTypes)), resultType(move(resultType))
+                : typeParameters(move(typeParameters)), argumentTypes(move(argumentTypes)), resultType(move(resultType))
         {}
         TypeParameters typeParameters;
         vector<pType> argumentTypes;
@@ -108,15 +108,15 @@ namespace ParseTree{
     };
     class VariableType : public Type{
     public:
-        VariableType(pTypeVariable&& _var)
-            : var(_var){}
+        VariableType(pTypeVariable&& var)
+            : var(move(var)){}
         pTypeVariable var;
     };
 
     class TypeDef  : public PTreeNode{
     public: 
-        TypeDef(pIdentifier&& _id, TypeParameters&& _parameters)
-            : id(_id), parameters(_parameters){}
+        TypeDef(pIdentifier&& id, TypeParameters&& parameters)
+            : id(move(id)), parameters(move(parameters)){}
         virtual ~TypeDef() = 0;
         pIdentifier id;
         TypeParameters parameters;
@@ -125,13 +125,13 @@ namespace ParseTree{
     
     class TypeConstructorDef : public TypeDef{
     public:
-        TypeConstructorDef(pIdentifier&& _id, TypeParameters&& _parameters)
-            : TypeDef(_id,_parameters){}
+        TypeConstructorDef(pIdentifier&& id, TypeParameters&& parameters)
+            : TypeDef(move(id),move(parameters)){}
     };
     class TypeSynonymDef : public TypeDef{
     public:
-        TypeSynonymDef(pIdentifier&& _id, TypeParameters&& _parameters, pType&& _target)
-            : TypeDef(_id,_parameters), target(_target){}
+        TypeSynonymDef(pIdentifier&& id, TypeParameters&& parameters, pType&& target)
+            : TypeDef(move(id),move(parameters)), target(move(target)){}
         pType target;
     };
     // </editor-fold>
@@ -141,29 +141,30 @@ namespace ParseTree{
     //Variables
     class Variable : public PTreeNode{
     protected:
-    	Variable(const TextPosition _textPos,
-                 Attributes&& _attributes,
-                 pIdentifier&& _id,
-                 pType&& _type,
-                 int _flags)
-    		: PTreeNode(_textPos), 
-                  id(move(_id)), 
-                  type(move(_type)), 
-                  attributes(move(_attributes)),
-                  flags(_flags)
+    	Variable(const TextPosition pos,
+                 Attributes&& attributes,
+                 pIdentifier&& id,
+                 pType&& type,
+                 int flags)
+    		: PTreeNode(pos), 
+                  attributes(move(attributes)),
+                  id(move(id)), 
+                  type(move(type)), 
+                  flags(flags)
             {}
     public:
+    	virtual ~Variable(){}
         static constexpr int GLOBAL   = 1 << 0;
         static constexpr int INPUT    = 1 << 1;
         static constexpr int OUTPUT   = 1 << 2;
         static constexpr int CONSTANT = 1 << 3;
         static constexpr int BOUND    = 1 << 4;
-    	virtual ~Variable(){}
+
+    	Attributes attributes;
     	pIdentifier id;
     	pType       type;
-    	Attributes attributes;
-        
         int flags;
+        
         bool isGlobal(){return flags&GLOBAL; }
         bool isInput() {return flags&INPUT; }
         bool isOutput(){return flags&OUTPUT; }
@@ -196,13 +197,15 @@ namespace ParseTree{
     };
     class ConstantParentSpec: public PTreeNode {
     public:
-        ConstantParentSpec(pIdentifier&& _id, bool _isUnique)
-            : id(_id), isUnique(_isUnique)
+        ConstantParentSpec(pIdentifier&& id, bool isUnique)
+            : id(move(id)), isUnique(isUnique)
             {}
-        bool isUnique;
         pIdentifier id;
+        bool isUnique;
     };
-    typedef unique_ptr<pConstantOrderSpec> pConstantOrderSpec;
+    typedef unique_ptr<ConstantParentSpec> pConstantParentSpec;
+    class ConstantOrderSpec;
+    typedef unique_ptr<ConstantOrderSpec> pConstantOrderSpec;
     class ConstantOrderSpec : public PTreeNode {
     	public:
     		bool specified = false;
@@ -213,18 +216,18 @@ namespace ParseTree{
     
     class GlobalVariable final : public Variable{
     public:
-        GlobalVariable(const TextPosition& _textPos,
-                 Attributes&&  _attributes,
-                 pIdentifier&& _id,
-                 pType&&       _type,
-                 pExpression&& _whereClause)
+        GlobalVariable(const TextPosition& pos,
+                 Attributes&&  attributes,
+                 pIdentifier&& id,
+                 pType&&       type,
+                 pExpression&& whereClause)
                 : Variable(
-                   _textPos,
-                   move(_attributes),
-                   move(_id),
-                   move(_type),
+                   pos,
+                   move(attributes),
+                   move(id),
+                   move(type),
                    Variable::GLOBAL),
-                  whereClause(_whereClause)
+                  whereClause(move(whereClause))
         {}
         pExpression whereClause;
     };
@@ -256,7 +259,7 @@ namespace ParseTree{
                     (isInput ? Variable::INPUT : isOutput ? Variable::OUTPUT : 0))
         {}
     };
-    typedef unique_ptr<pGlobalVariable> pGlobalVariable;
+    typedef unique_ptr<GlobalVariable> pGlobalVariable;
     typedef unique_ptr<LocalVariable> pLocalVariable;
     typedef unique_ptr<BoundVariable> pBoundVariable;
     // </editor-fold>
@@ -273,12 +276,12 @@ namespace ParseTree{
             pVariable&&       returnVar,
             pExpression       body)
             : PTreeNode( pos ),
-              attributes    (attributes),
-              id            (id),
-              typeParameters(typeParameters),
-    	      parameters    (parameters),
-    	      returnVar     (returnVar),
-              body          (body)
+              attributes    (move(attributes)),
+              id            (move(id)),
+              typeParameters(move(typeParameters)),
+    	      parameters    (move(parameters)),
+    	      returnVar     (move(returnVar)),
+              body          (move(body))
             {}
         Attributes      attributes;
         pIdentifier     id;
@@ -293,8 +296,8 @@ namespace ParseTree{
     // <editor-fold desc="Axioms">
     class Axiom : public PTreeNode{
     public:
-        Axiom(Attributes&& _attributes, pExpression&& _expression)
-            : attributes(_attributes), expression(_expression)
+        Axiom(Attributes&& attributes, pExpression&& expression)
+            : attributes(move(attributes)), expression(move(expression))
         {}
         Attributes attributes;
         pExpression expression;
@@ -308,7 +311,7 @@ namespace ParseTree{
     class SpecExpression : public PTreeNode{
     public:
         SpecExpression(pExpression&& e, bool isFree)
-            : e(e), isFree(isFree){}
+            : e(move(e)), isFree(isFree){}
         pExpression e;
         bool isFree;
     };
@@ -326,17 +329,17 @@ namespace ParseTree{
     
     class ProcedureSC : public PTreeNode{
     protected:
-        ProcedureSC(pIdentifier&& _id, Attributes&& _attributes, pProcSignature&& _sig)
-            : id(_id), attributes(_attributes), sig(_sig) {}
+        ProcedureSC(pIdentifier&& id, Attributes&& attributes, pProcSignature&& sig)
+            : id(move(id)), attributes(move(attributes)), sig(move(sig)) {}
     public:
         virtual ~ProcedureSC() = 0;
         pIdentifier id;
         Attributes attributes;
-        ProcSignature sig;
+        pProcSignature sig;
     };
     class Procedure : public ProcedureSC{
-        Procedure(pIdentifier&& _id, Attributes&& _attributes, pProcSignature&& _sig)
-            : ProcedureSC( _id, _attributes, _sig) {}
+        Procedure(pIdentifier&& id, Attributes&& attributes, pProcSignature&& sig)
+            : ProcedureSC( move(id), move(attributes), move(sig)) {}
     };
     typedef unique_ptr<Procedure> pProcedure;
     
@@ -344,10 +347,11 @@ namespace ParseTree{
     typedef unique_ptr<Statement> pStatement;
     typedef vector<Variable> pLocals;
     
-    class Implementation : public PTreeNode{
+    class Implementation : public ProcedureSC{
         Implementation(
             pIdentifier&& id, Attributes&& attributes, pProcSignature&& sig, vector<pVariable>&& pLocals, pStatement&& body)
-            : ProcedureSC( id, attributes, sig), locals(locals), body(body) {}
+            : ProcedureSC( move(id), move(attributes), move(sig)), 
+              locals(move(locals)), body(move(body)) {}
         pLocals locals;
         pStatement body;
     };
@@ -355,12 +359,6 @@ namespace ParseTree{
     // </editor-fold>
     
     // <editor-fold desc="Attributes and triggers">
-    class Attribute;
-    typedef vector<Attribute> Attributes;
-
-    class Trigger;
-    typedef vector<Trigger>   Triggers;
-
     class AttributeParam;
     typedef unique_ptr<AttributeParam> pAttributeParam;
     class Attribute : public PTreeNode{
@@ -380,8 +378,8 @@ namespace ParseTree{
     };
     class ExpressionAttributeParam : public AttributeParam{
     public:
-        ExpressionAttributeParam(pExpression _value)
-            : value(_value){}
+        ExpressionAttributeParam(pExpression value)
+            : value(move(value)){}
         pExpression value;
     };
     class Trigger : public PTreeNode{
@@ -424,13 +422,13 @@ namespace ParseTree{
     class Expression : public WExpression{
     public:
         virtual ~Expression() = 0;
-        static void make(const TextPosition& _textPos,const Operation op, std::initializer_list<unique_ptr<Expression>>);
+//        static void make(const TextPosition& pos, const Operation op, std::initializer_list<unique_ptr<Expression>>);
     };
     typedef unique_ptr<Expression> pExpression;
     
     class VariableExpression : public Expression{
     public:
-        VariableExpression(pIdentifier&& id) : id(id) {}
+        VariableExpression(pIdentifier&& id) : id(move(id)) {}
         pIdentifier id;
     };
     typedef unique_ptr<VariableExpression> pVariableExpression;
@@ -441,15 +439,15 @@ namespace ParseTree{
     
     class FAExpression : public Expression{
     public:
-        FAExpression(pOperation&& _op, vector<pExpression>&& _args)
-            : op(_op), args(_args){}
+        FAExpression(pOperation&& op, vector<pExpression>&& args)
+            : op(move(op)), args(move(args)){}
         pOperation op;
         vector<pExpression> args;
     };
     class QExpression : public Expression{
     public:
-        QExpression(Binder _binder, TypeParameters&& _tVars, vector<pBoundVariable>&& _vars, pExpression _e)
-            : binder(_binder), tVars(_tParams), vars(_vars), e(_e) {}
+        QExpression(Binder binder, TypeParameters&& tVars, vector<pBoundVariable>&& vars, pExpression e)
+            : binder(binder), tVars(move(tVars)), vars(move(vars)), e(move(e)) {}
         Binder binder;
         TypeParameters tVars;
         vector<pBoundVariable> vars;
@@ -457,13 +455,13 @@ namespace ParseTree{
     };
     class OldExpression final : public Expression{
     public:
-        OldExpression(pExpression&& e) : e(e){}
+        OldExpression(pExpression&& e) : e(move(e)){}
         pExpression e;
     };
     class LiteralExpression : public Expression{};
     template<class T>class LiteralExpressionC : public LiteralExpression{
     public:
-        LiteralExpressionC(T&& val) : val(_val){}
+        LiteralExpressionC(T&& val) : val(move(val)){}
         T val;
     };
     
@@ -507,12 +505,20 @@ namespace ParseTree{
 
     // <editor-fold desc="Statements">
     class LabelOrStatement : public PTreeNode{};
+    typedef unique_ptr<LabelOrStatement> pLabelOrStatement;
     class Label : public LabelOrStatement{
     public:
-        Label(pIdentifier&& id) : id(id){}
+        Label(pIdentifier&& id) : id(move(id)){}
         pIdentifier id;
     };
     typedef unique_ptr<Label> pLabel;
+    
+    class Block : public PTreeNode{
+    public:
+        Block(vector<LabelOrStatement>&& s) : s(move(s)){}
+        vector<LabelOrStatement> s;
+    };
+    typedef unique_ptr<Block> pBlock;
     
     class Statement : public LabelOrStatement{
     public:
@@ -523,37 +529,38 @@ namespace ParseTree{
     public:
         pExpression e;
     protected:
-        PredicateStatement(pExpression&& e) : e(e){}
+        PredicateStatement(pExpression&& e) : e(move(e)){}
     };
     class AssertStatement : public PredicateStatement{
     public:
-        AssertStatement(pExpression&& e) : PredicateStatement(e) {}
+        AssertStatement(pExpression&& e) : PredicateStatement(move(e)) {}
     };
     class AssumeStatement : public PredicateStatement{
     public:
-        AssumeStatement(pExpression&& e) : PredicateStatement(e) {}
+        AssumeStatement(pExpression&& e) : PredicateStatement(move(e)) {}
     };
     
     class HavocStatement : public Statement{
     public:
-        HavocStatement(list<pVariable>&& vars) : vars(vars) {}
+        HavocStatement(list<pVariable>&& vars) : vars(move(vars)) {}
         list<pVariable> vars;
     };
 
     class AssignLHS : public PTreeNode{};
     class AssignLHSVar : public AssignLHS{
     public:
-        AssignLHSVar(pIdentifier&& id) : id(id){}
+        AssignLHSVar(pIdentifier&& id) : id(move(id)){}
         pIdentifier id;
     };
     class MapSelect : public PTreeNode{
     public:
-        MapSelect(vector<pExpression>&& indices) : indices(indices){}
+        MapSelect(vector<pExpression>&& indices) : indices(move(indices)){}
         vector<pExpression> indices;
     };
     typedef unique_ptr<MapSelect> pMapSelect;
     class AssignLHSMap : public AssignLHS{
-        AssignLHSMap(pIdentifier&& id, vector<pMapSelect>&& mss) : id(id), mss(mss){}
+        AssignLHSMap(pIdentifier&& id, vector<pMapSelect>&& mss) 
+            : id(move(id)), mss(move(mss)){}
         pIdentifier id;
         vector<pMapSelect> mss;
     };
@@ -561,34 +568,34 @@ namespace ParseTree{
     class AssignStatement : public Statement{
     public:
         AssignStatement(vector<pAssignLHS>&& lhss, vector<pExpression>&& rhss) 
-            : lhss(lhss), rhss(rhss) {}
-        list<pAssignLHS> lhss;
-        list<pExpression> rhss;
+            : lhss(move(lhss)), rhss(move(rhss)) {}
+        vector<pAssignLHS> lhss;
+        vector<pExpression> rhss;
     };
 
     class CallStatement : public Statement{
     public:
-        CallStatement(vector<pVariable>&& lhss, pIdentifier&& procId, vector<pExpression>&& args) 
-            : lhss(lhss), procId(procId), args(args) {}
-        list<pAssignLHS> lhss;
+        CallStatement(vector<pAssignLHS>&& lhss, pIdentifier&& procId, vector<pExpression>&& args) 
+            : lhss(move(lhss)), procId(move(procId)), args(move(args)) {}
+        vector<pAssignLHS> lhss;
         pIdentifier procId;
-        list<pExpression> args;
+        vector<pExpression> args;
     };
 
     class CallForallStatement : public Statement{
     public:
         CallForallStatement(pIdentifier&& procId, vector<pWExpression>&& args) 
-            : procId(procId), args(args) {}
+            : procId(move(procId)), args(move(args)) {}
         pIdentifier procId;
-        list<pWExpression> args;
+        vector<pWExpression> args;
     };
 
     class SkipStatement : public Statement{};
     
     class ITEStatement : public Statement{
     public:
-        ITEStatement(pWExpression&& cond, pStatement&& thenS, pStatement&& elseS = new SkipStatement)
-            : cond(cond), thenS(thenS), elseS(elseS){}
+        ITEStatement(pWExpression&& cond, pStatement&& thenS, pStatement&& elseS = make_unique<SkipStatement>())
+            : cond(move(cond)), thenS(move(thenS)), elseS(move(elseS)){}
         pWExpression cond;
         pStatement   thenS;
         pStatement   elseS;
@@ -597,7 +604,7 @@ namespace ParseTree{
     class WhileStatement : public Statement{
     public:
         WhileStatement(pWExpression&& cond, vector<SpecExpression>&& invariant, pStatement&& body)
-            : cond(cond), invariant(invariant), body(body){}
+            : cond(move(cond)), invariant(move(invariant)), body(move(body)){}
         pWExpression cond;
         vector<SpecExpression> invariant;
         pStatement   body;
@@ -605,7 +612,7 @@ namespace ParseTree{
 
     class BreakStatement : public Statement{
     public:
-        BreakStatement(pLabel&& target) : target(target){}
+        BreakStatement(pLabel&& target) : target(move(target)){}
         
         pLabel target;
     };
@@ -622,15 +629,9 @@ namespace ParseTree{
         ReturnStatement() {}
     };
     
-    class Block : public PTreeNode{
-    public:
-        Block(vector<pStatement>&& stmnts) : stmnts(stmnts) {}
-        vector<pStatement> stmnts;
-    };
     // </editor-fold>
 
 }//namespace AST
 }//namespace frontend
 }//namespace boogie
 #endif
-;

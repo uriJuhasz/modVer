@@ -91,7 +91,8 @@ PRODUCTIONS
 
 /*------------------------------------------------------------------------*/
 BoogiePL
-= { ConstantsDef  <. program .>
+= (. auto program = make_unique<Program>(); .)
+  { ConstantsDef  <. program .>
   | FunctionDef   <. program .>
   | Axiom         <. program .>
   | TypeDefs      <. program .>
