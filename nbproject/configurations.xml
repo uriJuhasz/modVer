@@ -58,8 +58,10 @@
           <cleanCommand>${MAKE} -f Makefile clean</cleanCommand>
           <executablePath></executablePath>
           <ccTool>
+            <standard>11</standard>
             <incDir>
               <pElem>../../workspace4.7/boost_1_62_0</pElem>
+              <pElem>../../../../mingw64/mingw32/lib/gcc/i686-w64-mingw32/6.2.0/include/c++</pElem>
             </incDir>
           </ccTool>
         </makeTool>

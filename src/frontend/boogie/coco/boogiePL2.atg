@@ -107,9 +107,9 @@ ConstantsDef<. AST::Scope& scope .>
 = (. TextPosition pos; 
      bool unique = false; 
      vector<AST::Identifier> ids;
-     unique_ptr<AST::Type> type;
-     unique_ptr<AST::Attributes> attributes;
-     unique_ptr<AST::ConstantOrderSpec> orderSpec = new ConstantOrderSpec();
+     unique_ptr<Type> type;
+     AST::Attributes attributes;
+     unique_ptr<ConstantOrderSpec> orderSpec;
   .)
   
   "const"                                   (. pos = toTextPos(*t); .)
@@ -146,10 +146,12 @@ OrderSpecParent<. ConstantOrderSpec& orderSpec .>
   
 /*------------------------------------------------------------------------*/
 GlobalVarDefs<. Scope& scope .>
-= (. unique_ptr<AST::Attributes> attributes; .)
+= (. AST::Attributes attributes; .)
   "var"
   Attributes<attributes>
-  IdsTypeWheres<. [attributes&,scope&]{TypedIdentifier tid => scope.addVariableDef( new AST::GlobalVariable(tid, attributes)) } .> ";"
+  IdsTypeWheres<. [const attributes&,scope&]{
+    unique_ptr<Identifier>&& id, unique_ptr<Type> => 
+        scope.addVariableDef( new AST::Variable(id, type->clone(), clone(attributes) ); } .> ";"
   .
 
 IdsTypeWheres<. void action(unique_ptr<TypedIdentifier>) .>
@@ -169,21 +171,18 @@ IdsTypeWhere<. void action(unique_ptr<TypedIdentifier>) .>
 
 /*------------------------------------------------------------------------*/
 FunctionDef<. Scope& scope .>
-= (. Token idToken;
-     Token typeParamToken;
-     unique_ptr<TypeParameters> typeParams;
-     unique_ptr<list<Variable>> arguments;
-     unique_ptr<TypedIdentifier> tid;
+= (. unique_ptr<Identifier> id;
+     AST::Attributes attributes;
+     TypeParameters typeParameterss;
+     list<Variable> arguments;
      unique_ptr<TypedIdentifier> returnTID = null;
-     QKeyValue argKv = null;
      unique_ptr<Attributes> attributes;
      unique_ptr<Expression> body = null;
   .)
-  "function" Attributes<attributes> Identifier<idToken>
-  [ TypeParams<typeParamToken, typeParams> ]
+  "function" Attributes<attributes> Identifier<id>
+  [ TypeParams<typeParams> ]
   "(" [ VarOrType<arguments> { "," VarOrType<arguments> } ] ")"
-  (
-    "returns" "(" VarOrType<returnTID> ")"
+  ( "returns" "(" VarOrType<returnTID> ")"
     |
     ":" TypeAsNameless<returnTID>   
   )
@@ -209,7 +208,7 @@ TypeAsNameless<. unique_ptr<Variable>& var .>
 
 /*------------------------------------------------------------------------*/
 LocalVars<. Scope& scope .>
-= (. unique_ptr<AST::Attributes> attributes; .)
+= (. AST::Attributes attributes; .)
   "var"
   Attributes<attributes>
   IdsTypeWheres<. [attributes&,scope&]{TypedIdentifier tid => scope.addVariableDef( new AST::LocalVariable(tid, attributes)) } .> ";"
@@ -227,7 +226,7 @@ ProcFormals<. bool incoming, bool allowWhereClauses, list<Variable>& ds .>
   ")"
   .
 
-BoundVars<.IToken/*!*/ x, out List<Variable>/*!*/ ds.>
+BoundVars<. IToken/*!*/ x, out List<Variable>/*!*/ ds.>
 = (.
     Contract.Requires(x != null);
     Contract.Ensures(Contract.ValueAtReturn(out ds) != null);
@@ -240,7 +239,8 @@ BoundVars<.IToken/*!*/ x, out List<Variable>/*!*/ ds.>
 
 /*------------------------------------------------------------------------*/
 /* AttrsIdsTypeWheres is used with the declarations of formals and bound variables */
-AttrsIdsTypeWheres<. bool allowAttributes, bool allowWhereClauses, const string& context, std::function<void(TypedIdentifier&&, Attributes&&)> action .>
+AttrsIdsTypeWheres<. bool allowAttributes, bool allowWhereClauses, const string& context, 
+        std::function<void(TypedIdentifier&&, AST::Attributes&&)> action .>
 =
   AttributesIdsTypeWhere<allowAttributes, allowWhereClauses, context, action>
   { "," AttributesIdsTypeWhere<allowAttributes, allowWhereClauses, context, action> }
@@ -294,22 +294,19 @@ TypeArgs<. list<unique_ptr<Type> types .>
 
 
 MapType<. unique_ptr<Type>& type .>
-= (. Token* tok = nullptr;
-     Token nnTok;
-     List<Bpl.Type>/*!*/ arguments = new List<Bpl.Type>();
-     Bpl.Type/*!*/ result;
-     list<TypeVariable> typeParameters;
+= (. TextPosition pos;
+     TypeParameters typeParameters;
+     list<unique_ptr<Type>> arguments;
+     unique_ptr<Type> result;
    .)
-  [ TypeParams<tok, typeParameters> ]
-  "["                                         (.  if (tok == nullptr) tok = t;  .)
-    [ Types<arguments> ]
-  "]"
-  Type<out result>
-  (. ty = new MapType(tok, typeParameters, arguments, result); .)
-  .
+  [ TypeParams<typeParameters> ]
+  "[" (. pos = t .) [ TypesCS<arguments> ] "]"
+  Type<result>
+  (. type = new MapType(pos, typeParameters, arguments, result); .)
+.
 
 
-Types<.List<Bpl.Type>/*!*/ ts.>
+TypesCS<.List<Bpl.Type>/*!*/ ts.>
 = (. Contract.Requires(ts != null); Bpl.Type/*!*/ ty; .)
   Type<out ty>                 (. ts.Add(ty); .)
   { "," Type<out ty>           (. ts.Add(ty); .)
@@ -317,7 +314,7 @@ Types<.List<Bpl.Type>/*!*/ ts.>
   .
 
 
-TypeParams<. Token& startToken, list<TypeVariable>& typeParams .>
+TypeParams<. list<TypeVariable>& typeParams .>
 =  (. list<Identifier> typeParamIds; .)
   "<"                         (.  startToken = t;  .)
     Identifiers<typeParamIds>
@@ -1087,19 +1084,39 @@ BinderOrParenExpression<. unique_ptr<Expression>& e .>
 = (. TextPosition pos;
      Binder b;
   .)
-  "(" (
-      Expression<e>                 (. if (e is BvBounds) this.SemErr("parentheses around bitvector bounds are not allowed"); .)
-      | ( 
-          ( Forall                            (. binder = Binder::forall; .)
-          | Exists                            (. binder = Binder::exists; .)
-          | Lambda                            (. binder = Binder::lambda; .)
-          )                                   (. pos = toTextPos(t); .)
-        QuantifierBody<pos,binder,e> )
-    ) ")"
+  "(" 
+        Expression<e>                 (. if (e is BvBounds) this.SemErr("parentheses around bitvector bounds are not allowed"); .)
+      | ( Binder<pos,binder> QuantifierBody<pos,binder,e> )
+   ")"
 .
 
+Binder<. TextPosition& pos, Binder& binder .>
+=
+      Forall                            (. binder = Binder::forall; .)
+    | Exists                            (. binder = Binder::exists; .)
+    | Lambda                            (. binder = Binder::lambda; .)
+                                        (. pos = toTextPos(t); .)
+.
 
+QuantifierBody<. TextPosition pos, Binder binder, unique_ptr<Expression>& e .>
+= (. TextPosition pos2;
+     list<TypeVariable>         typeVars;
+     list<Variable>             vars;
+     unique_ptr<Attributes>     attributes;
+     unique_ptr<Expression>     ie                 .)
+  (
+    (   TypeParams<pos2,typeVars> [ BoundVars<vars> ]
+      | BoundVars<vars> )
+    QSep
+    AttributesOrTriggers<attributes>
+    Expression<ie>
+  ) (. e = new BinderExpression(pos, binder, move(attributes), move(triggers), move(typeVars), move(vars), move(ie)); .)
+  .
 
+Forall = "forall" | '\u2200'.
+Exists = "exists" | '\u2203'.
+Lambda = "lambda" | '\u03bb'.
+QSep = "::" | '\u2022'.
 
 
 CastExpression<. unique_ptr<Expression>& e .>
@@ -1146,20 +1163,17 @@ SpecBlock<. list<Block>& blocks .>
 
 Attributes<. unique_ptr<Attributes>& attributes .>
 = (. attributes = new Attributes() .)
-  { Attribute<*attributes> }
+  { "{" AttributeI<*attributes> "}" }
 .
 
-Attribute<. unique_ptr<Attributes>& attributes .>
-= (. Trigger trig = null; .)
-  AttributeOrTrigger< attributes > (.  if (trig != null) this.SemErr("only attributes, not triggers, allowed here"); .)
+AttributesAndTriggers<. unique_ptr<Attributes>& attributes, unique_ptr<Triggers> triggers .>
+= (. attributes = new Attributes(); triggers = new Triggers() .)
+  { "{" (AttributeI<*attributes> | TriggerI<*triggers>) "}" }
 .
 
-AttributeOrTrigger<. unique_ptr<Attributes>& attributes .> 
-= "{" ( AttributeI<*attributes> | TriggerI<*attributes> ) "}" .
-
-TriggerI<. Attributes& attributes .> 
+TriggerI<. Triggers& triggers .> 
 = (. unique_ptr<Trigger> trigger = new Trigger() .)
-    ExpressionsCS<trigger.expressions> (. attributes.triggers.push_back(move(trigger)); .)
+    ExpressionsCS<trigger.expressions> (. triggers.push_back(move(trigger)); .)
 .
 
 AttributeI<. Attributes& attributes .> 
@@ -1185,26 +1199,6 @@ IfThenElseExpression<. unique_ptr<Expression>& e .>
 .
 
 
-QuantifierBody<. TextPosition pos, Binder binder, unique_ptr<Expression>& e .>
-= (. TextPosition pos2;
-     list<TypeVariable>         typeVars;
-     list<Variable>             vars;
-     unique_ptr<Attributes>     attributes;
-     unique_ptr<Triggers>       triggers;    
-     unique_ptr<Expression>     ie                 .)
-  (
-    (   TypeParams<pos2,typeParams> [ BoundVars<pos, vars> ]
-      | BoundVars<pos, vars> )
-    QSep
-    { AttributeOrTrigger<attributes, triggers> }
-    Expression<ie>
-  ) (. e = new BinderExpression(pos, binder, move(attributes), move(triggers), move(typeVars), move(vars), move(ie)); .)
-  .
-
-Forall = "forall" | '\u2200'.
-Exists = "exists" | '\u2203'.
-Lambda = "lambda" | '\u03bb'.
-QSep = "::" | '\u2022'.
 
 /*------------------------------------------------------------------------*/
 IdentifierExpression<. unique_ptr<Expression>& e .> = 

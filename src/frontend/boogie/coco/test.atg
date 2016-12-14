@@ -1,0 +1,48 @@
+COMPILER test
+
+/*--------------------------------------------------------------------------*/
+CHARACTERS
+  
+  letter = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz".
+  digit = "0123456789".
+  
+  cr        = '\r'.
+  lf        = '\n'.
+  tab       = '\t'.
+  
+  space = ' '.
+  newLine = cr + lf.
+  
+/*------------------------------------------------------------------------*/
+TOKENS
+  a =  'a'.
+  b = 'b'.
+  c = 'c'.
+
+COMMENTS FROM "/*" TO "*/" NESTED
+COMMENTS FROM "//" TO lf
+
+IGNORE cr + lf + tab
+
+
+/*------------------------------------------------------------------------*/
+PRODUCTIONS
+
+test = E.
+
+//A = B | (A a B).
+
+E = A<e>.
+
+//A =  B ( 'a' A  | ()).
+A<e> = B<e> 
+    ( (  Ar<e> { Ar<e> }) | ()).
+
+Ar<e> = 'a' B<e2> (. e = E(opA, e,e2) .).
+ 
+B<e> = C | (B<e> 'b' C).
+
+C = 'c' | '(' E ')'.
+
+END test.
+
