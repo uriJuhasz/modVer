@@ -4,6 +4,7 @@
 #include <set>
 #include <vector>
 #include <memory>
+#include <list>
 #include "common/data_types.h"
 #include "frontend/TextPosition.h"
 
@@ -16,6 +17,8 @@ namespace AST{
 
     using std::unique_ptr;
     using std::vector;
+    using std::list;
+    using std::string;
 
     class ASTNode{
     public:
@@ -23,7 +26,7 @@ namespace AST{
     protected:
     	ASTNode(const TextPosition& _textPos = TextPosition::NoPos) : textPos(_textPos){}
     };
-    class Attributes;
+    class AttributesAndTriggers;
     class Expression;
     class TypeVariable : public ASTNode{};
     class Type : public ASTNode{public:unique_ptr<Attributes> clone() const;};
@@ -127,8 +130,36 @@ namespace AST{
     class Procedure      : public ASTNode{};
     class Implementation : public ASTNode{};
     
-    class Attributes : public ASTNode{public:unique_ptr<Attributes> clone() const;};
-    class TypedIdentifier : public Identifier{ public: Type type; };
+    class Attribute;
+    class AttributeParam;
+    class Attributes : public ASTNode{
+    public:
+        unique_ptr<Attributes> clone() const;
+        list<unique_ptr<Attribute>> attributes;
+    };
+    class Attribute : public ASTNode{
+    public:
+        unique_ptr<Identifier> id;
+        list<unique_ptr<AttributeParam>> params;
+    };
+    class AttributeParam : public ASTNode{
+    public:
+        virtual ~AttributeParam() = 0;
+    };
+    class StringAttributeParam : public AttributeParam{
+    public:
+        std::string value;
+    };
+    class ExpressionAttributeParam : public AttributeParam{
+    public:
+        unique_ptr<Expression> value;
+    };
+
+    class TypedIdentifier : public Identifier{ 
+    public: 
+        TypedIdentifier(const string& _id, unique_ptr<Type> _type);
+        unique_ptr<Type> type; 
+    };
 
     class ProcedureSignature : public ASTNode{};
     class ProcedureSpec : public ASTNode{};

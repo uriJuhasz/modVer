@@ -6,6 +6,7 @@
 #include <list>
 #include <string>
 #include <memory>
+#include <functional>
 #include "frontend/boogie/AST.h"
 
 using namespace frontend::boogie::AST;
@@ -112,7 +113,7 @@ ConstantsDef<. AST::Scope& scope .>
   .)
   
   "const"                                   (. pos = toTextPos(*t); .)
-  { Attributes<attributes> }
+  Attributes<attributes>
   [ "unique"                                (. unique = true;  .) ]
   Identifiers<ids> ":" Type<type>
   [ OrderSpec<orderSpec> ]
@@ -147,7 +148,7 @@ OrderSpecParent<. ConstantOrderSpec& orderSpec .>
 GlobalVarDefs<. Scope& scope .>
 = (. unique_ptr<AST::Attributes> attributes; .)
   "var"
-  { Attributes<attributes> }
+  Attributes<attributes>
   IdsTypeWheres<. [attributes&,scope&]{TypedIdentifier tid => scope.addVariableDef( new AST::GlobalVariable(tid, attributes)) } .> ";"
   .
 
@@ -178,7 +179,7 @@ FunctionDef<. Scope& scope .>
      unique_ptr<Attributes> attributes;
      unique_ptr<Expression> body = null;
   .)
-  "function" { Attributes<attributes> } Identifier<idToken>
+  "function" Attributes<attributes> Identifier<idToken>
   [ TypeParams<typeParamToken, typeParams> ]
   "(" [ VarOrType<arguments> { "," VarOrType<arguments> } ] ")"
   (
@@ -207,14 +208,10 @@ TypeAsNameless<. unique_ptr<Variable>& var .>
 .
 
 /*------------------------------------------------------------------------*/
-
-
-
-/*------------------------------------------------------------------------*/
 LocalVars<. Scope& scope .>
 = (. unique_ptr<AST::Attributes> attributes; .)
   "var"
-  { Attributes<attributes> }
+  Attributes<attributes>
   IdsTypeWheres<. [attributes&,scope&]{TypedIdentifier tid => scope.addVariableDef( new AST::LocalVariable(tid, attributes)) } .> ";"
   .
 
@@ -243,21 +240,20 @@ BoundVars<.IToken/*!*/ x, out List<Variable>/*!*/ ds.>
 
 /*------------------------------------------------------------------------*/
 /* AttrsIdsTypeWheres is used with the declarations of formals and bound variables */
-AttrsIdsTypeWheres<. bool allowAttributes, bool allowWhereClauses, string context, System.Action<TypedIdent, QKeyValue> action .>
+AttrsIdsTypeWheres<. bool allowAttributes, bool allowWhereClauses, const string& context, std::function<void(TypedIdentifier&&, Attributes&&)> action .>
 =
   AttributesIdsTypeWhere<allowAttributes, allowWhereClauses, context, action>
   { "," AttributesIdsTypeWhere<allowAttributes, allowWhereClauses, context, action> }
   .
 
 
-AttributesIdsTypeWhere<. bool allowAttributes, bool allowWhereClauses, string context, System.Action<TypedIdent, QKeyValue> action .>
-= (. unique_ptr<Attributes> attrbutes; .)
-  { Attributes<attributes>    (. if (!allowAttributes) {
+AttributesIdsTypeWhere<. bool allowAttributes, bool allowWhereClauses, string context, std::function(void(TypedIdentifier&&, Attributes&&)) action .>
+= (. unique_ptr<Attributes> attributes; .)
+  Attributes<attributes>    (. if (!allowAttributes) {
                               kv = null;
                               this.SemErr("attributes are not allowed on " + context);
                             }
                          .)
-  }
   IdsTypeWhere<allowWhereClauses, context, delegate(TypedIdent tyd) { action(tyd, kv); }>
   .
 
@@ -338,7 +334,7 @@ VarOrType<. unique_ptr<TypedIdentifier>& tid .>
     string/*!*/ varName = TypedIdent.NoName;
     kv = null;
   .)
-  { Attributes<ref kv> }
+  Attributes<attributes>
   Type<type>        (. idToken = type.token; .)
   [ ":"           (. { UTI uti; 
   							   if (uti=dynamic_cast<UnresolvedTypeIdentifier>(type) && uti.arguments.size()==0)
@@ -362,7 +358,7 @@ VarOrType<. unique_ptr<TypedIdentifier>& tid .>
 Axiom<Scope& scope>
 = (. unique_ptr<Expression> e; unique_ptr<Attributes> attributes; .)
   "axiom"
-   { Attributes<Attributes> }
+   Attributes<attributes>
    (. Token tok = t; .)
   Proposition<e> ";"  (. scope.addAxiom(new Axiom(tok, attributes, e)); .)
   .
@@ -371,7 +367,7 @@ Axiom<Scope& scope>
 TypeDefs<. Scope& scope .>
 = (. unique_ptr<Attributes> attributes; .)
   "type"
-  { Attributes<attributes> }
+  Attributes<attributes>
   UserDefinedType<scope, attributes>          
   { "," UserDefinedType<scope, attributes> }    
   ";"
@@ -452,7 +448,7 @@ ProcSignature<.bool allowWhereClausesOnFormals, out IToken/*!*/ name, out List<T
 = (. Contract.Ensures(Contract.ValueAtReturn(out name) != null); Contract.Ensures(Contract.ValueAtReturn(out typeParams) != null); Contract.Ensures(Contract.ValueAtReturn(out ins) != null); Contract.Ensures(Contract.ValueAtReturn(out outs) != null);
      IToken/*!*/ typeParamTok; typeParams = new List<TypeVariable>();
      outs = new List<Variable>(); kv = null; .)
-  { Attributes<ref kv> }
+  Attributes<attributes>
   Identifier<out name>
   [ TypeParams<out typeParamTok, out typeParams> ]
   ProcFormals<true, allowWhereClausesOnFormals, out ins>
@@ -474,13 +470,13 @@ Spec<.List<Requires>/*!*/ pre, List<IdentifierExpr>/*!*/ mods, List<Ensures>/*!*
   )
   .
 
-SpecPrePost<.bool free, List<Requires>/*!*/ pre, List<Ensures>/*!*/ post.>
-= (. Contract.Requires(pre != null); Contract.Requires(post != null); Expr/*!*/ e; Token tok = null; QKeyValue kv = null; .)
+SpecPrePost<. bool free, list<Requires>& pre, list<Ensures>& post .>
+= (. Expr/*!*/ e; Token tok = null; QKeyValue kv = null; .)
   ( "requires"              (. tok = t; .)
-    { Attributes<ref kv> }
+    Attributes<attributes>
     Proposition<out e> ";"  (. pre.Add(new Requires(tok, free, e, null, kv)); .)
   | "ensures"               (. tok = t; .)
-    { Attributes<ref kv> }
+    Attributes<attributes>
     Proposition<out e> ";"  (. post.Add(new Ensures(tok, free, e, null, kv)); .)
   )
   .
@@ -570,7 +566,7 @@ WhileCmd<out WhileCmd/*!*/ wcmd>
     [ "free"          (. isFree = true;  .)
     ]
     "invariant"
-    { Attributes<ref kv> }
+    Attributes<attributes>
     Expression<out e> (. if (isFree) {
                            invariants.Add(new AssumeCmd(z, e, kv));
                          } else {
@@ -632,7 +628,7 @@ PredicateCmd<. unique_ptr<Cmd>& c .>
   (   "assert"                       (. isAssert=true;      .) 
     | "assume"                       (. isAssert=false;     .)
   )                                  (. pos = toTextPos(t); .)
-  { Attributes<attributes> }
+  Attributes<attributes>
   Proposition<out e>    
   ";"                                 (. c = isAssert ? new AssertCmd(pos, attributes, e) : new AssumeCmd(pos, attributes, e); .)
 .
@@ -702,7 +698,7 @@ CallCmd<out Cmd c>
   [ "free"          (. isFree = true;  .)
   ]
   "call"                          (. x = t; .)
-  { Attributes<ref kv> }
+  Attributes<attributes>
   CallParams<isAsync, isFree, kv, x, out c> (. .)
   .
 
@@ -714,7 +710,7 @@ ParCallCmd<out Cmd d>
      List<CallCmd> callCmds = new List<CallCmd>();
   .)
   "par"                          (. x = t; .)
-  { Attributes<ref kv> }
+  Attributes<attributes>
   CallParams<false, false, kv, x, out c> (. callCmds.Add((CallCmd)c); .) 
   { "|" CallParams<false, false, kv, x, out c> (. callCmds.Add((CallCmd)c); .) 
   }
@@ -1148,62 +1144,36 @@ SpecBlock<. list<Block>& blocks .>
   ";"
   .
 
-Attributes<. unique_ptr<Attributes>& .>
-= (. Trigger trig = null; .)
-  AttributeOrTrigger<ref kv, ref trig> (.  if (trig != null) this.SemErr("only attributes, not triggers, allowed here"); .)
+Attributes<. unique_ptr<Attributes>& attributes .>
+= (. attributes = new Attributes() .)
+  { Attribute<*attributes> }
 .
 
-AttributeOrTrigger<ref QKeyValue kv, ref Trigger trig>
-= (. IToken/*!*/ tok;  Expr/*!*/ e;  List<Expr>/*!*/ es;
-     string key;
-     List<object/*!*/> parameters;  object/*!*/ param;
-  .)
-  "{"                                         (. tok = t; .)
-     (
-       ":" ident                              (. key = t.val;  parameters = new List<object/*!*/>(); .)
-       [ AttributeParameter<out param>        (. parameters.Add(param); .)
-         { "," AttributeParameter<out param>  (. parameters.Add(param); .)
-         }
-       ]
-       (. if (key == "nopats") {
-            if (parameters.Count == 1 && parameters[0] is Expr) {
-              e = (Expr)parameters[0];
-              if(trig==null){
-                trig = new Trigger(tok, false, new List<Expr> { e }, null);
-              } else {
-                trig.AddLast(new Trigger(tok, false, new List<Expr> { e }, null));
-              }
-            } else {
-              this.SemErr("the 'nopats' quantifier attribute expects a string-literal parameter");
-            }
-          } else {
-            if (kv==null) {
-              kv = new QKeyValue(tok, key, parameters, null);
-            } else {
-              kv.AddLast(new QKeyValue(tok, key, parameters, null));
-            }
-          }
-       .)
-     |
-       Expression<out e>       (. es = new List<Expr> { e }; .)
-       { "," Expression<out e> (. es.Add(e); .)
-       }                       (. if (trig==null) {
-                                    trig = new Trigger(tok, true, es, null);
-                                  } else {
-                                    trig.AddLast(new Trigger(tok, true, es, null));
-                                  }
-                               .)
-     )
-  "}"
-  .
+Attribute<. unique_ptr<Attributes>& attributes .>
+= (. Trigger trig = null; .)
+  AttributeOrTrigger< attributes > (.  if (trig != null) this.SemErr("only attributes, not triggers, allowed here"); .)
+.
 
-AttributeParameter<out object/*!*/ o>
-= (. Contract.Ensures(Contract.ValueAtReturn(out o) != null);
-     o = "error";
-     Expr/*!*/ e;
-  .)
-  ( string                (. o = t.val.Substring(1, t.val.Length-2); .)
-  | Expression<out e>     (. o = e; .)
+AttributeOrTrigger<. unique_ptr<Attributes>& attributes .> 
+= "{" ( AttributeI<*attributes> | TriggerI<*attributes> ) "}" .
+
+TriggerI<. Attributes& attributes .> 
+= (. unique_ptr<Trigger> trigger = new Trigger() .)
+    ExpressionsCS<trigger.expressions> (. attributes.triggers.push_back(move(trigger)); .)
+.
+
+AttributeI<. Attributes& attributes .> 
+= (. unique_ptr<Attribute> attribute = new Attribute() .)
+    ":" Identifier<id>                     
+        [       AttributeParameter<attribute.params>
+          { "," AttributeParameter<attribute.params> }
+        ]       (. attributes.add(attribute).)
+.  //Boogie takes { :nopats Expression } as a dis-unification constraint
+
+AttributeParameter<. list<unique_ptr<AttributeParam>>& params .>
+= (. unique_ptr<Expression> e; .)
+  ( string            (. params.push_back(new     StringAttributeParam( t, t.val.sub_string(1, t.val.Length-2) ); .)
+  | Expression<e>     (. params.push_back(new ExpressionAttributeParam( e )); .)
   )
 .
 
