@@ -146,7 +146,7 @@
               <in>Parser.cpp</in>
               <in>Parser.h</in>
             </df>
-            <in>AST.h</in>
+            <in>ParseTree.h</in>
           </df>
           <df name="parser">
             <in>ParserBase.cpp</in>

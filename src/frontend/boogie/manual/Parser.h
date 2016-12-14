@@ -1,7 +1,7 @@
 #ifndef FRONTEND_BOOGIE_PARSER_H
 #define FRONTEND_BOOGIE_PARSER_H
 
-#include "../AST.h"
+#include "../ParseTree.h"
 #include "../../parser/ParserBase.h"
 #include "common/data_types.h"
 #include <functional>
@@ -10,7 +10,7 @@ namespace frontend{
 namespace boogie{
 namespace parser{
 using common::String;
-using AST::Program;
+using ParseTree::Program;
 using std::string;
 using frontend::parser::Exception;
 using frontend::parser::TextPos;

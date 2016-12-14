@@ -65,13 +65,13 @@ private:
         skipBalancedUntil1('}');
     }
 
-    unique_ptr<AST::TypeArguments> parseTypeArguments(){
+    unique_ptr<ParseTree::TypeArguments> parseTypeArguments(){
         skipSpaces();
         if (tryParseKW("<"))
             skipBalancedUntil1('>');
-        return unique_ptr<AST::TypeArguments>(new AST::TypeArguments);
+        return unique_ptr<ParseTree::TypeArguments>(new ParseTree::TypeArguments);
     }
-    unique_ptr<AST::ProcedureSignature> parseProcedureSignature(){
+    unique_ptr<ParseTree::ProcedureSignature> parseProcedureSignature(){
         auto typeArgs = parseTypeArguments();
         parseKW("(");
         skipBalancedUntil1(')');
@@ -81,10 +81,10 @@ private:
             skipBalancedUntil1(')');
         }
         
-        return unique_ptr<AST::ProcedureSignature>(new AST::ProcedureSignature);
+        return unique_ptr<ParseTree::ProcedureSignature>(new ParseTree::ProcedureSignature);
     }
 
-    unique_ptr<AST::ProcedureSpec> parseProcedureSpec(){
+    unique_ptr<ParseTree::ProcedureSpec> parseProcedureSpec(){
         while (has(1)){
             auto free = tryParseKW("free");
             if (tryParseKW("requires"))
@@ -98,15 +98,15 @@ private:
             else
                 break;
         }
-        return unique_ptr<AST::ProcedureSpec>(new AST::ProcedureSpec());
+        return unique_ptr<ParseTree::ProcedureSpec>(new ParseTree::ProcedureSpec());
     }
-    unique_ptr<AST::ProcedureBody> parseProcedureBody(){
+    unique_ptr<ParseTree::ProcedureBody> parseProcedureBody(){
         parseKW("{");
         skipBalancedUntil1('}');
-        return unique_ptr<AST::ProcedureBody>(new AST::ProcedureBody());
+        return unique_ptr<ParseTree::ProcedureBody>(new ParseTree::ProcedureBody());
     }
 
-    unique_ptr<AST::Attributes> parseAttributes(){
+    unique_ptr<ParseTree::Attributes> parseAttributes(){
         skipSpaces();
         while (tryLex("{")){
             skipSpaces();
@@ -115,15 +115,15 @@ private:
             skipBalancedUntil1('}');
         
         }
-        return unique_ptr<AST::Attributes>(new AST::Attributes());
+        return unique_ptr<ParseTree::Attributes>(new ParseTree::Attributes());
     }
-    unique_ptr<AST::Identifier>  parseIdentifier(){
+    unique_ptr<ParseTree::Identifier>  parseIdentifier(){
         auto r = tryParseIdentifier();
         if (r.get()==nullptr)
             throw new ExpectedException("identifier",curPos());
         return r;
     }
-    unique_ptr<AST::Identifier>  tryParseIdentifier(){
+    unique_ptr<ParseTree::Identifier>  tryParseIdentifier(){
         skipSpaces();
         common::String id;
         if (!has(1))
@@ -136,9 +136,9 @@ private:
             id += cur();
             next();
         }
-        return unique_ptr<AST::Identifier>(new AST::Identifier(id));
+        return unique_ptr<ParseTree::Identifier>(new ParseTree::Identifier(id));
     }
-    unique_ptr<std::vector<AST::Identifier>> parseIdentifierSequence();
+    unique_ptr<std::vector<ParseTree::Identifier>> parseIdentifierSequence();
 //    unique_ptr<AST::Type> parseType();
     
     

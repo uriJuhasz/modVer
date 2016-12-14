@@ -7,9 +7,9 @@
 #include <string>
 #include <memory>
 #include <functional>
-#include "frontend/boogie/AST.h"
+#include "frontend/boogie/ParseTree.h"
 
-using namespace frontend::boogie::AST;
+using namespace frontend::boogie::ParseTree;
 using std::vector;
 using std::list;
 using std::unique_ptr;
@@ -1108,7 +1108,7 @@ QuantifierBody<. TextPosition pos, Binder binder, unique_ptr<Expression>& e .>
     (   TypeParams<pos2,typeVars> [ BoundVars<vars> ]
       | BoundVars<vars> )
     QSep
-    AttributesOrTriggers<attributes>
+    AttributesAndTriggers<attributes>
     Expression<ie>
   ) (. e = new BinderExpression(pos, binder, move(attributes), move(triggers), move(typeVars), move(vars), move(ie)); .)
   .

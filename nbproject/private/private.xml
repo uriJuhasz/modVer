@@ -18,7 +18,7 @@
     <preferences xmlns="http://www.netbeans.org/ns/auxiliary-configuration-preferences/1">
         <module name="org-netbeans-modules-cnd-discovery">
             <property name="rootFolder" value="C:\Users\uri\GIT\modVer"/>
-            <property name="exec-log-file" value="C:\Users\uri\GIT\modVer"/>
+            <property name="exec-log-file" value="C:\Users\uri\GIT\modVer\build\CMakeFiles\CMakeOutput.log*C:\Users\uri\GIT\modVer"/>
             <property name="make-log-file" value="C:\Users\uri\GIT\modVer\build\CMakeFiles\CMakeOutput.log*C:\Users\uri\GIT\modVer"/>
         </module>
     </preferences>
