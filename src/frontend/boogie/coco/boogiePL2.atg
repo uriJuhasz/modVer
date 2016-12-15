@@ -14,6 +14,8 @@ using std::vector;
 using std::list;
 using std::unique_ptr;
 using std::string;
+using std::function;
+using std::make_unique;
 
 COMPILER BoogiePL
 
@@ -100,11 +102,11 @@ BoogiePL
 = (. auto program = make_unique<Program>(); .)
   { ConstantsDef  <. *program .>
   | FunctionDef   <. *program .>
-  | Axiom         <. *program .>
+  | AxiomP        <. *program .>
   | TypeDefs      <. *program .>
   | GlobalVarDefs <. *program .>
-  | Procedure     <. *program .>
-  | Implementation<. *program .>
+  | ProcedureP     <. *program .>
+  | ImplementationP<. *program .>
   }
   EOF
   .
@@ -115,12 +117,12 @@ ConstantsDef<. Program& scope .>
      bool unique = false; 
      vector<pIdentifier> ids;
      pType type;
-     ParseTree::Attributes attributes;
+     Attributes attributes;
      pConstantOrderSpec orderSpec(new ConstantOrderSpec());
   .)
   
   "const"                                   (. pos = toPos(t); .)
-  Attributes<attributes>
+  AttributesP<attributes>
   [ "unique"                                (. unique = true;  .) ]
   IdentifiersCS<ids> ":" Type<type>
   [ OrderSpec<*orderSpec> ]
@@ -156,7 +158,7 @@ GlobalVarDefs<. Scope& scope .>
 = (. TextPosition pos;
      Attributes attributes; .)
   "var"                                     (. pos = toPos(t) .)
-  Attributes<attributes>
+  AttributesP<attributes>
   IdsTypeWheres<. [const attributes&,scope&]{
     pIdentifier&& id, const Type& type, pExpression&& e => 
         scope.addVariableDef( make_unique<GlobalVariable>(
@@ -184,7 +186,7 @@ IdsTypeWhere<. function<void(pIdentifier&&, const Type&, pExpression&&)> action 
 /*------------------------------------------------------------------------*/
 FunctionDef<. Scope& scope .>
 = (. TextPosition pos;
-     ParseTree::Attributes attributes;
+     Attributes attributes;
      pIdentifier id;
      TypeParameters typeParams;
      vector<pType> args;
@@ -192,7 +194,7 @@ FunctionDef<. Scope& scope .>
      pType resultType;
      pExpression body;
   .)
-  "function" (. pos=toPos(t); .) Attributes<attributes> Identifier<id>
+  "function" (. pos=toPos(t); .) AttributesP<attributes> Identifier<id>
   [ TypeParams<typeParams> ]
   "(" [ VarOrTypeArgC<args,argNames> { "," VarOrTypeArgC<args,argNames> } ] ")"
   (   "returns" "(" VarOrTypeAsType<resultType> ")"
@@ -230,11 +232,13 @@ VarOrTypeArg<. pType& type, pIdentifier& id .>
 
 
 /*------------------------------------------------------------------------*/
-LocalVars<. Scope& scope .>
-= (. AST::Attributes attributes; .)
+LocalVar<. Scope& scope .>
+= (. Attributes attributes; .)
   "var"
-  Attributes<attributes>
-  IdsTypeWheres<. [attributes&,scope&]{TypedIdentifier tid => scope.addVariableDef( new AST::LocalVariable(tid, attributes)) } .> ";"
+  AttributesP<attributes>
+  IdsTypeWheres<. [attributes&,scope&]{ 
+       pIdentifier&& id, Type& type => scope.addVariableDef( 
+            make_unique<LocalVariable>( id->pos, cloneC(attributes), move(id), type->clone(), false, false )) } .> ";"
   .
 
 ProcFormals<. bool incoming, bool allowWhereClauses, list<Variable>& ds .>
@@ -263,16 +267,17 @@ BoundVars<. IToken/*!*/ x, out List<Variable>/*!*/ ds.>
 /*------------------------------------------------------------------------*/
 /* AttrsIdsTypeWheres is used with the declarations of formals and bound variables */
 AttrsIdsTypeWheres<. bool allowAttributes, bool allowWhereClauses, const string& context, 
-        std::function<void(TypedIdentifier&&, AST::Attributes&&)> action .>
+        std::function<void(TypedIdentifier&&, Attributes&&)> action .>
 =
   AttributesIdsTypeWhere<allowAttributes, allowWhereClauses, context, action>
   { "," AttributesIdsTypeWhere<allowAttributes, allowWhereClauses, context, action> }
   .
 
 
-AttributesIdsTypeWhere<. bool allowAttributes, bool allowWhereClauses, string context, std::function(void(TypedIdentifier&&, Attributes&&)) action .>
+AttributesIdsTypeWhere<. bool allowAttributes, bool allowWhereClauses, string context, 
+                         std::function( void(TypedIdentifier&&, Attributes&&)) action .>
 = (. unique_ptr<Attributes> attributes; .)
-  Attributes<attributes>    (. if (!allowAttributes) {
+  AttributesP<attributes>    (. if (!allowAttributes) {
                               kv = null;
                               this.SemErr("attributes are not allowed on " + context);
                             }
@@ -345,50 +350,41 @@ TypeParams<. TypeParameters& typeParams .>
   .
 
 /*------------------------------------------------------------------------*/
-Axiom<Scope& scope>
-= (. unique_ptr<Expression> e; unique_ptr<Attributes> attributes; .)
-  "axiom"
-   Attributes<attributes>
-   (. Token tok = t; .)
-  Proposition<e> ";"  (. scope.addAxiom(new Axiom(tok, attributes, e)); .)
-  .
+AxiomP<. Program& prog .>
+= (. TextPosition pos;
+     Attributes attributes; 
+     pExpression e; .)
+  "axiom"                  (. pos = toPos(t); .)
+   AttributesP<attributes>
+   Proposition<e> ";"      (. prog.addAxiom(make_unique<Axiom>(pos, move(attributes), move(e))); .)
+ .
 
 /*------------------------------------------------------------------------*/
-TypeDefs<. Scope& scope .>
-= (. unique_ptr<Attributes> attributes; .)
+TypeDefs<. Program& prog .>
+= (. Attributes attributes; .)
   "type"
-  Attributes<attributes>
-  UserDefinedType<scope, attributes>          
-  { "," UserDefinedType<scope, attributes> }    
+  AttributesP<attributes>
+        UserDefinedType<prog, attributes>
+  { "," UserDefinedType<prog, attributes> }    
   ";"
   .
 
-UserDefinedType<. Scope& scope, unique_ptr<Attributes> attributes .>
-= (. Token id; list<Token> paramTokens;;
-     //Bpl.Type/*!*/ body = dummyType; bool synonym = false; 
-.)
+UserDefinedType<. Program& prog, Attributes attributes .>
+= (. pIdentifier id; vector<pId> params;
+     pType body;
+  .)
   Identifier<id>
-  [ IdentifiersWS<paramTokens> ]
-  [
-    "=" Type<out body>
-    (. synonym = true; .)
-  ]
-  (.
-     if (synonym) {
-       List<TypeVariable>/*!*/ typeParams = new List<TypeVariable>();
-       foreach(Token/*!*/ t in paramTokens){
-         Contract.Assert(t != null);
-         typeParams.Add(new TypeVariable(t, t.val));}
-       decl = new TypeSynonymDecl(id, id.val, typeParams, body, kv);
-     } else {
-       decl = new TypeCtorDecl(id, id.val, paramTokens.Count, kv);
-     }
-   .)
-  .
+  [ IdentifiersWS<params> ]
+  [ "=" Type<body> ]
+  (. TypeParams tParams;
+     for (auto pid : params) tParams.push_back(make_unique<TypeVariable>(move(pid)));
+     prog.addTypedef( body ? make_unique<TypeSynonymDef>(id,tParams,body)
+                           : make_unique<TypeConstructorDef>(id,tParams) ); .)
+.
 
 
 /*------------------------------------------------------------------------*/
-Procedure<. Scope& scope .>
+ProcedureP<. Scope& scope .>
 = (. Contract.Ensures(Contract.ValueAtReturn(out proc) != null); IToken/*!*/ x;
      List<TypeVariable>/*!*/ typeParams;
      List<Variable>/*!*/ ins, outs;
@@ -417,7 +413,7 @@ Procedure<. Scope& scope .>
   .
 
 
-Implementation<. Scope& scope .>
+ImplementationP<. Scope& scope .>
 = (. Contract.Ensures(Contract.ValueAtReturn(out impl) != null); IToken/*!*/ x;
      List<TypeVariable>/*!*/ typeParams;
      List<Variable>/*!*/ ins, outs;
@@ -438,7 +434,7 @@ ProcSignature<.bool allowWhereClausesOnFormals, out IToken/*!*/ name, out List<T
 = (. Contract.Ensures(Contract.ValueAtReturn(out name) != null); Contract.Ensures(Contract.ValueAtReturn(out typeParams) != null); Contract.Ensures(Contract.ValueAtReturn(out ins) != null); Contract.Ensures(Contract.ValueAtReturn(out outs) != null);
      IToken/*!*/ typeParamTok; typeParams = new List<TypeVariable>();
      outs = new List<Variable>(); kv = null; .)
-  Attributes<attributes>
+  AttributesP<attributes>
   Identifier<out name>
   [ TypeParams<out typeParamTok, out typeParams> ]
   ProcFormals<true, allowWhereClausesOnFormals, out ins>
@@ -463,10 +459,10 @@ Spec<.List<Requires>/*!*/ pre, List<IdentifierExpr>/*!*/ mods, List<Ensures>/*!*
 SpecPrePost<. bool free, list<Requires>& pre, list<Ensures>& post .>
 = (. Expr/*!*/ e; Token tok = null; QKeyValue kv = null; .)
   ( "requires"              (. tok = t; .)
-    Attributes<attributes>
+    AttributesP<attributes>
     Proposition<out e> ";"  (. pre.Add(new Requires(tok, free, e, null, kv)); .)
   | "ensures"               (. tok = t; .)
-    Attributes<attributes>
+    AttributesP<attributes>
     Proposition<out e> ";"  (. post.Add(new Ensures(tok, free, e, null, kv)); .)
   )
   .
@@ -476,7 +472,7 @@ SpecPrePost<. bool free, list<Requires>& pre, list<Ensures>& post .>
 ImplBody<.out List<Variable>/*!*/ locals, out StmtList/*!*/ stmtList.>
 = (. Contract.Ensures(Contract.ValueAtReturn(out locals) != null); Contract.Ensures(Contract.ValueAtReturn(out stmtList) != null); locals = new List<Variable>(); .)
   "{"
-  { LocalVars<locals> }
+  { LocalVar<locals> }
   StmtList<out stmtList>
   .
 
@@ -556,7 +552,7 @@ WhileCmd<out WhileCmd/*!*/ wcmd>
     [ "free"          (. isFree = true;  .)
     ]
     "invariant"
-    Attributes<attributes>
+    AttributesP<attributes>
     Expression<out e> (. if (isFree) {
                            invariants.Add(new AssumeCmd(z, e, kv));
                          } else {
@@ -618,7 +614,7 @@ PredicateCmd<. unique_ptr<Cmd>& c .>
   (   "assert"                       (. isAssert=true;      .) 
     | "assume"                       (. isAssert=false;     .)
   )                                  (. pos = toTextPos(t); .)
-  Attributes<attributes>
+  AttributesP<attributes>
   Proposition<out e>    
   ";"                                 (. c = isAssert ? new AssertCmd(pos, attributes, e) : new AssumeCmd(pos, attributes, e); .)
 .
@@ -688,7 +684,7 @@ CallCmd<out Cmd c>
   [ "free"          (. isFree = true;  .)
   ]
   "call"                          (. x = t; .)
-  Attributes<attributes>
+  AttributesP<attributes>
   CallParams<isAsync, isFree, kv, x, out c> (. .)
   .
 
@@ -700,7 +696,7 @@ ParCallCmd<out Cmd d>
      List<CallCmd> callCmds = new List<CallCmd>();
   .)
   "par"                          (. x = t; .)
-  Attributes<attributes>
+  AttributesP<attributes>
   CallParams<false, false, kv, x, out c> (. callCmds.Add((CallCmd)c); .) 
   { "|" CallParams<false, false, kv, x, out c> (. callCmds.Add((CallCmd)c); .) 
   }
@@ -739,9 +735,8 @@ CallParams<bool isAsync, bool isFree, QKeyValue kv, IToken x, out Cmd c>
   .
 
 /*------------------------------------------------------------------------*/
-Proposition<out Expr/*!*/ e>
-=(.Contract.Ensures(Contract.ValueAtReturn(out e) != null);.)
-  Expression<out e>
+Proposition<. pExpression& e .>
+= Expression<e>
   .
 
 /*------------------------------------------------------------------------*/
@@ -1122,7 +1117,7 @@ CodeExpression<. unique_ptr<Expression>& e .>
      list<Variable> locals;
      list<Block>    blocks;   .)
   "|{"   (. pos = toTextPos(t); .)
-    { LocalVars<locals> } SpecBlock<blocks> { SpecBlock<blocks> } 
+    { LocalVar<locals> } SpecBlock<blocks> { SpecBlock<blocks> } 
   "}|" (. e = new CodeExpression(pos, locals, blocks); .)
   .
 
@@ -1151,7 +1146,7 @@ SpecBlock<. list<Block>& blocks .>
   ";"
   .
 
-Attributes<. ParseTree::Attributes& attributes .>
+AttributesP<. Attributes& attributes .>
 = (. attributes = new Attributes() .)
   { "{" AttributeI<*attributes> "}" }
 .

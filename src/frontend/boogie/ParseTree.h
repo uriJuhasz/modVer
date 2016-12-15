@@ -302,8 +302,8 @@ namespace ParseTree{
     // <editor-fold desc="Axioms">
     class Axiom : public PTreeNode{
     public:
-        Axiom(Attributes&& attributes, pExpression&& expression)
-            : attributes(move(attributes)), expression(move(expression))
+        Axiom(TextPosition pos, Attributes&& attributes, pExpression&& expression)
+            : PTreeNode(pos), attributes(move(attributes)), expression(move(expression))
         {}
         Attributes attributes;
         pExpression expression;
