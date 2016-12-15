@@ -21,26 +21,26 @@ namespace ParseTree{
     using std::vector;
     using std::string;
     using std::list;
-    
+
     using common::Integer;
     using common::Rational;
 
     // <editor-fold desc="utilities">
-    template<typename T,template<typename> class C>list<T>&& clone(const C<T>& in){
-        C<T> out;
+    template<typename T> T cloneC(const T& in){
+        T out;
         for (const auto& e : in)
             out.push_back(e->clone());
-        return out;
+        return move(out);
     }
     // </editor-fold>
 
     // <editor-fold desc="ParseTreeNode">
     class PTreeNode{
     public:
-    	TextPosition textPos;
+    	TextPosition pos;
     protected:
-    	PTreeNode(const TextPosition& _textPos = TextPosition::NoPos) 
-                : textPos(_textPos){}
+    	PTreeNode(const TextPosition pos = NoPos) 
+                : pos(pos){}
     };
     // </editor-fold>
     
@@ -63,8 +63,9 @@ namespace ParseTree{
     typedef unique_ptr<Identifier> pIdentifier;
     class Identifier : public PTreeNode{
     public:
-        Identifier(TextPosition _pos, const common::String& _name)
-        : PTreeNode(_pos), name(_name){}
+        Identifier(TextPosition pos, const common::String& name)
+        : PTreeNode(pos), name(name){}
+        pIdentifier&& clone()const{return move(make_unique<Identifier>(pos,name)); }
         String name;
     };
     // </editor-fold>
@@ -173,27 +174,28 @@ namespace ParseTree{
     };
 
     typedef unique_ptr<Variable> pVariable;
-    class ConstantParentSpec;
-    typedef unique_ptr<ConstantParentSpec> pConstantParentSpec;
-    class Constant final : public Variable{
+
+    class ConstantOrderSpec;
+    typedef unique_ptr<ConstantOrderSpec> pConstantOrderSpec;
+    class Constant : public Variable{
     public:
-        Constant(const TextPosition& _textPos,
-                 Attributes&&  _attributes,
-                 pIdentifier&& _id,
-                 pType&&       _type,
-                 bool          _isUnique,
-                 pConstantParentSpec _parentSpec)
+        Constant(const TextPosition& pos,
+                 Attributes&&  attributes,
+                 pIdentifier&& id,
+                 pType&&       type,
+                 bool          isUnique,
+                 pConstantOrderSpec parentSpec)
                 : Variable(
-                   _textPos,
-                   move(_attributes),
-                   move(_id),
-                   move(_type),
+                   pos,
+                   move(attributes),
+                   move(id),
+                   move(type),
                    Variable::GLOBAL | Variable::CONSTANT),
-                   isUnique(_isUnique), 
-                   parentSpec(move(_parentSpec))
+                   isUnique(isUnique), 
+                   orderSpec(move(orderSpec))
         {}
         bool isUnique;
-        pConstantParentSpec parentSpec;
+        pConstantOrderSpec orderSpec;
     };
     class ConstantParentSpec: public PTreeNode {
     public:
@@ -204,8 +206,6 @@ namespace ParseTree{
         bool isUnique;
     };
     typedef unique_ptr<ConstantParentSpec> pConstantParentSpec;
-    class ConstantOrderSpec;
-    typedef unique_ptr<ConstantOrderSpec> pConstantOrderSpec;
     class ConstantOrderSpec : public PTreeNode {
     	public:
     		bool specified = false;
@@ -363,18 +363,28 @@ namespace ParseTree{
     typedef unique_ptr<AttributeParam> pAttributeParam;
     class Attribute : public PTreeNode{
     public:
+        Attribute(){}
+        Attribute(pIdentifier&& id, vector<pAttributeParam>&& params)
+            : id(move(id)), params(move(params)){}
+        
+        pAttribute clone() const{
+            return make_unique<Attribute>(id->clone(),cloneC(params));
+        }
+        
         pIdentifier id;
-        list<pAttributeParam> params;
+        vector<pAttributeParam> params;
     };
     class AttributeParam : public PTreeNode{
     public:
         virtual ~AttributeParam() = 0;
+        virtual pAttributeParam clone() const = 0;
     };
     class StringAttributeParam : public AttributeParam{
     public:
         StringAttributeParam(const string& value)
             : value(value){}
         std::string value;
+        pAttributeParam clone() const override{return make_unique<StringAttributeParam>(value);};
     };
     class ExpressionAttributeParam : public AttributeParam{
     public:

@@ -24,7 +24,7 @@ Parser(const std::basic_string<unsigned char>& buf)
 	
 }
 void parse(){
-	BoogiePL();
+    BoogiePL();
 } 
 
 static TextPosition toTextPos(const Token& t){ return TextPosition(t.line,t.col); } 
@@ -92,25 +92,25 @@ PRODUCTIONS
 /*------------------------------------------------------------------------*/
 BoogiePL
 = (. auto program = make_unique<Program>(); .)
-  { ConstantsDef  <. program .>
-  | FunctionDef   <. program .>
-  | Axiom         <. program .>
-  | TypeDefs      <. program .>
-  | GlobalVarDefs <. program .>
-  | Procedure     <. program .>
-  | Implementation<. program .>
+  { ConstantsDef  <. *program .>
+  | FunctionDef   <. *program .>
+  | Axiom         <. *program .>
+  | TypeDefs      <. *program .>
+  | GlobalVarDefs <. *program .>
+  | Procedure     <. *program .>
+  | Implementation<. *program .>
   }
   EOF
   .
 
 /*------------------------------------------------------------------------*/
-ConstantsDef<. AST::Scope& scope .>
+ConstantsDef<. Program& scope .>
 = (. TextPosition pos; 
      bool unique = false; 
-     vector<AST::Identifier> ids;
-     unique_ptr<Type> type;
-     AST::Attributes attributes;
-     unique_ptr<ConstantOrderSpec> orderSpec;
+     vector<pIdentifier> ids;
+     pType type;
+     ParseTree::Attributes attributes;
+     pConstantOrderSpec orderSpec(new ConstantOrderSpec());
   .)
   
   "const"                                   (. pos = toTextPos(*t); .)
@@ -118,21 +118,20 @@ ConstantsDef<. AST::Scope& scope .>
   [ "unique"                                (. unique = true;  .) ]
   Identifiers<ids> ":" Type<type>
   [ OrderSpec<orderSpec> ]
-  (.  for (const auto& id : ids) 
-  			scope.addVariableDef(
-  				new AST::Constant(
-                                    pos, 
-                                    attributes->clone(), 
-                                    id, 
-                                    type->clone(),
-                                    unique, 
-                                    orderSpec->clone()); 
+  (.  for (auto& id : ids) 
+    scope.addVariableDef(
+        make_unique<Constant>(
+            pos, 
+            cloneC(attributes), 
+            move(id), 
+            type->clone(),
+            unique, 
+            orderSpec->clone())); 
   .)
   ";"
   .
 
-
-OrderSpec<. unique_ptr<ConstantOrderSpec>& orderSpec.>
+OrderSpec<. pConstantOrderSpec& orderSpec.>
 = "extends"                                                          (. orderSpec->specified = true; .) 
   [ OrderSpecParent<orderSpec> { ","  OrderSpecParent<orderSpec> } ]
   [ "complete"                                                       (. orderSpec->ChildrenComplete = true; .) ] 
@@ -753,7 +752,7 @@ Proposition<out Expr/*!*/ e>
   .
 
 /*------------------------------------------------------------------------*/
-Identifiers<. list<Identifier>& ids .>
+Identifiers<. vector<pIdentifier>& ids .>
 = (.Contract.Ensures(Contract.ValueAtReturn(out xs) != null); IToken/*!*/ id; xs = new List<IToken>(); .)
   Identifier<out id>                 (. xs.Add(id); .)
   { "," Identifier<out id>           (. xs.Add(id); .)
@@ -1162,7 +1161,7 @@ SpecBlock<. list<Block>& blocks .>
   ";"
   .
 
-Attributes<. unique_ptr<Attributes>& attributes .>
+Attributes<. ParseTree::Attributes& attributes .>
 = (. attributes = new Attributes() .)
   { "{" AttributeI<*attributes> "}" }
 .
