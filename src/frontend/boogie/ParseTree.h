@@ -200,12 +200,13 @@ namespace ParseTree{
     class ConstantParentSpec: public PTreeNode {
     public:
         ConstantParentSpec(pIdentifier&& id, bool isUnique)
-            : id(move(id)), isUnique(isUnique)
-            {}
+            : id(move(id)), isUnique(isUnique){}
+        ConstantParentSpec(ConstantParentSpec&& other)
+            : id(move(other.id)), isUnique(other.isUnique){}
+
         pIdentifier id;
         bool isUnique;
     };
-    typedef unique_ptr<ConstantParentSpec> pConstantParentSpec;
     class ConstantOrderSpec : public PTreeNode {
     	public:
     		bool specified = false;
@@ -247,15 +248,17 @@ namespace ParseTree{
     };
     class LocalVariable final : public Variable{
     public:
-        LocalVariable(const TextPosition& _textPos,
-                 Attributes&&  _attributes,
-                 pIdentifier&& _id,
-                 pType&&       _type,bool isInput,bool isOutput)
+        LocalVariable( 
+                 const TextPosition& pos,
+                 Attributes&&  attributes,
+                 pIdentifier&& id,
+                 pType&&       type,
+                 bool isInput,bool isOutput)
                 : Variable(
-                   _textPos,
-                   move(_attributes),
-                   move(_id),
-                   move(_type),
+                   pos,
+                   move(attributes),
+                   move(id),
+                   move(type),
                     (isInput ? Variable::INPUT : isOutput ? Variable::OUTPUT : 0))
         {}
     };
@@ -272,22 +275,25 @@ namespace ParseTree{
             Attributes&&      attributes,
             pIdentifier&&     id,
             TypeParameters&&  typeParameters,
-            list<pVariable>&& parameters,
-            pVariable&&       returnVar,
+            vector<pType>&&   argTypes,
+            pType&&           resultType,
+            vector<pIdentifier>&& argNames,
             pExpression       body)
             : PTreeNode( pos ),
               attributes    (move(attributes)),
               id            (move(id)),
               typeParameters(move(typeParameters)),
-    	      parameters    (move(parameters)),
-    	      returnVar     (move(returnVar)),
+    	      argTypes      (move(argTypes)),
+    	      resultType    (move(resultType)),
+              argNames      (move(argNames)),
               body          (move(body))
             {}
         Attributes      attributes;
         pIdentifier     id;
         TypeParameters  typeParameters;
-        list<pVariable> parameters;
-        pVariable       returnVar;
+        vector<pType>   argTypes;
+        pType           resultType;
+        vector<pIdentifier> argNames;
         pExpression     body;
     };
     typedef unique_ptr<Function> pFunction;
@@ -629,7 +635,7 @@ namespace ParseTree{
 
     class GotoStatement : public Statement{
     public:
-        GotoStatement(vector<pLabel>&& targets) : targets(targets){}
+        GotoStatement(vector<pLabel>&& targets) : targets(move(targets)){}
         
         vector<pLabel> targets;
     };

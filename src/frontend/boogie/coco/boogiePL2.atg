@@ -27,7 +27,7 @@ void parse(){
     BoogiePL();
 } 
 
-static TextPosition toTextPos(const Token& t){ return TextPosition(t.line,t.col); } 
+static TextPosition toPos(const Token* t){ return TextPosition(t->line,t->col); } 
 
 static string toIdentifier(const string& s){
     return s.starts_with('\\') ? s.sub_str(1) : s;
@@ -38,6 +38,10 @@ bool isLabel() {
   return (la.kind == _ident && scanner.peek().kind == _colon );
 } 
 
+bool isIdColon() {
+  Token* t = la;
+  return (la.kind == _ident && scanner.peek().kind == _colon );
+} 
 
 /*--------------------------------------------------------------------------*/
 CHARACTERS
@@ -68,6 +72,8 @@ TOKENS
   ident =  [ '\\' ] nondigit {nondigit | digit}.
   bvlit = digit {digit} 'b' 'v' digit {digit}.
   digits = digit {digit}.
+
+  colon = ':'.
 
   string = quote { regularStringChar | "\\\"" } quote.
 
@@ -113,11 +119,11 @@ ConstantsDef<. Program& scope .>
      pConstantOrderSpec orderSpec(new ConstantOrderSpec());
   .)
   
-  "const"                                   (. pos = toTextPos(*t); .)
+  "const"                                   (. pos = toPos(t); .)
   Attributes<attributes>
   [ "unique"                                (. unique = true;  .) ]
-  Identifiers<ids> ":" Type<type>
-  [ OrderSpec<orderSpec> ]
+  IdentifiersCS<ids> ":" Type<type>
+  [ OrderSpec<*orderSpec> ]
   (.  for (auto& id : ids) 
     scope.addVariableDef(
         make_unique<Constant>(
@@ -131,80 +137,97 @@ ConstantsDef<. Program& scope .>
   ";"
   .
 
-OrderSpec<. pConstantOrderSpec& orderSpec.>
-= "extends"                                                          (. orderSpec->specified = true; .) 
+OrderSpec<. ConstantOrderSpec& orderSpec.>
+= "extends"                                                          (. orderSpec.specified = true; .) 
   [ OrderSpecParent<orderSpec> { ","  OrderSpecParent<orderSpec> } ]
-  [ "complete"                                                       (. orderSpec->ChildrenComplete = true; .) ] 
+  [ "complete"                                                       (. orderSpec.complete  = true; .) ] 
   .
 
 
 OrderSpecParent<. ConstantOrderSpec& orderSpec .>
-= (. bool unique = false;  .)
+= (. bool unique = false;
+     pIdentifier id  .)
     [ "unique"             (. unique = true; .) ]
-    ident                  (. orderSpec.parents.push_back(new ConstantParent (new IdentifierExpression(t, t.val), unique)); .)
-	.
+    Identifier<id>         (. orderSpec.parents.push_back(ConstantParentSpec(move(id), unique)); .)
+.
   
 /*------------------------------------------------------------------------*/
 GlobalVarDefs<. Scope& scope .>
-= (. AST::Attributes attributes; .)
-  "var"
+= (. TextPosition pos;
+     Attributes attributes; .)
+  "var"                                     (. pos = toPos(t) .)
   Attributes<attributes>
   IdsTypeWheres<. [const attributes&,scope&]{
-    unique_ptr<Identifier>&& id, unique_ptr<Type> => 
-        scope.addVariableDef( new AST::Variable(id, type->clone(), clone(attributes) ); } .> ";"
+    pIdentifier&& id, const Type& type, pExpression&& e => 
+        scope.addVariableDef( make_unique<GlobalVariable>(
+            pos, cloneC(attributes), move(id), type->clone(), move(e) ); } .> 
+  ";"
   .
 
-IdsTypeWheres<. void action(unique_ptr<TypedIdentifier>) .>
+/*------------------------------------------------------------------------*/
+IdsTypeWheres<. function<void(pIdentifier&&, const Type&, pExpression&&)> action .>
 	= IdsTypeWhere<action> { "," IdsTypeWhere<action> }.
 
 /* context is allowed to be null if allowWhereClauses is true */
-IdsTypeWhere<. void action(unique_ptr<TypedIdentifier>) .>
-  =                                 (. list<Identifier> ids;  
-                                       unique_ptr<Type> type;  
-                                       unique_ptr<Expression> whereExp; .)
-  Identifiers<ids> ":" Type<type>
+IdsTypeWhere<. function<void(pIdentifier&&, const Type&, pExpression&&)> action .>
+= (. vector<pIdentifier> ids;  
+     pType type;  
+     pExpression whereExp; 
+  .)
+  IdentifiersCS<ids> ":" Type<type>
   [ "where" Expression<whereExp>  ]
 	  (. for (auto& id : ids)
-	       action(new TypedIdentifier(id, id.val, type, whereExp ? whereExp->clone() : nullptr));
+	       action(id, type, whereExp);
 	  .)
   .
 
 /*------------------------------------------------------------------------*/
 FunctionDef<. Scope& scope .>
-= (. unique_ptr<Identifier> id;
-     AST::Attributes attributes;
-     TypeParameters typeParameterss;
-     list<Variable> arguments;
-     unique_ptr<TypedIdentifier> returnTID = null;
-     unique_ptr<Attributes> attributes;
-     unique_ptr<Expression> body = null;
+= (. TextPosition pos;
+     ParseTree::Attributes attributes;
+     pIdentifier id;
+     TypeParameters typeParams;
+     vector<pType> args;
+     vector<pIdentifier> argNames;
+     pType resultType;
+     pExpression body;
   .)
-  "function" Attributes<attributes> Identifier<id>
+  "function" (. pos=toPos(t); .) Attributes<attributes> Identifier<id>
   [ TypeParams<typeParams> ]
-  "(" [ VarOrType<arguments> { "," VarOrType<arguments> } ] ")"
-  ( "returns" "(" VarOrType<returnTID> ")"
-    |
-    ":" TypeAsNameless<returnTID>   
-  )
+  "(" [ VarOrTypeArgC<args,argNames> { "," VarOrTypeArgC<args,argNames> } ] ")"
+  (   "returns" "(" VarOrTypeAsType<resultType> ")"
+    | ":" Type<resultType> )
   ( "{" Expression<body> "}" | ";" )
-  (.
-
-    scope.addFunctionDef(new FunctionDef(
-    	toTextPos(idToken), 
-    	attributes, 
-    	new IdentifierExpression(idToken, idToken.val),
-    	arguments,
-    	returnTid,
-    	body));
+  (. scope.addFunctionDef( make_unique<Function>(
+    	pos, 
+    	move(attributes), 
+    	move(id),
+    	move(args),
+    	move(resultType),
+        move(argNames),
+    	move(body)));
     	//Boogie makes func(a,b:T) into func(a:T,b:T) but func(a,b) as func(<anon0>:a,<anon1>:b)
     	//Boogie adds body as axiom if "inline" attribute is present 
+        //We ignore the return variable name - not usable anywhere
   .)
-  .
-
-TypeAsNameless<. unique_ptr<Variable>& var .>
-  = (. unique_ptr<Type> type; .)
-  Type<type> (. var = new Variable(move(type)) .)
 .
+
+VarOrTypeAsType<. pType& type .>
+  = (. pIdentifier id; .)
+    (IF (isIdColon) ident colon Type<type> )
+    | Type<type>
+.
+
+VarOrTypeArgC<. vector<pType>& args, vector<pIdentifier>& argNames .>
+= (. pType type, pIdentifier id; .)
+    VarOrTypeArg<type,id> (. args.push_back(type); argNames.push_back(id); .)
+.
+
+VarOrTypeArg<. pType& type, pIdentifier& id .>
+= (   ( IF (isIdColon) Identifier<id> ":" Type<Type> )
+    | (                                   Type<Type> ))
+.
+
 
 /*------------------------------------------------------------------------*/
 LocalVars<. Scope& scope .>
@@ -296,8 +319,8 @@ TypeArgs<. list<unique_ptr<Type> types .>
 MapType<. unique_ptr<Type>& type .>
 = (. TextPosition pos;
      TypeParameters typeParameters;
-     list<unique_ptr<Type>> arguments;
-     unique_ptr<Type> result;
+     vector<pType> arguments;
+     pType result;
    .)
   [ TypeParams<typeParameters> ]
   "[" (. pos = t .) [ TypesCS<arguments> ] "]"
@@ -314,41 +337,11 @@ TypesCS<.List<Bpl.Type>/*!*/ ts.>
   .
 
 
-TypeParams<. list<TypeVariable>& typeParams .>
-=  (. list<Identifier> typeParamIds; .)
+TypeParams<. TypeParameters& typeParams .>
+=  (. vector<Identifier> ids; .)
   "<"                         (.  startToken = t;  .)
-    Identifiers<typeParamIds>
-  ">"                         (. for (auto& id : typeParamIds ) typeParams.push_back(new TypeVariable(id)); .)
-  .
-
-/*------------------------------------------------------------------------*/
-
-VarOrType<. unique_ptr<TypedIdentifier>& tid .>
-= (.
-    unique_ptr<Type> type;
-    Token idToken;
-    Contract.Ensures(Contract.ValueAtReturn(out tyd) != null);
-    string/*!*/ varName = TypedIdent.NoName;
-    kv = null;
-  .)
-  Attributes<attributes>
-  Type<type>        (. idToken = type.token; .)
-  [ ":"           (. { UTI uti; 
-  							   if (uti=dynamic_cast<UnresolvedTypeIdentifier>(type) && uti.arguments.size()==0)
-  							   	varName = uti.name;
-  							   else
-  									this.SemErr("expected identifier before ':'");
-  							}
-/*  							var uti = ty as UnresolvedTypeIdentifier;
-                     if (uti != null && uti.Arguments.Count == 0) {
-                       varName = uti.Name;
-                     } else {
-                       this.SemErr("expected identifier before ':'");
-                     }*/
-                  .)
-    Type<type>
-  ]
-  (. tyd = new TypedIdent(tok, varName, ty); .)
+    IdentifiersCS<ids>
+  ">"                         (. for (auto& id : ids ) typeParams.push_back(new TypeVariable(id)); .)
   .
 
 /*------------------------------------------------------------------------*/
@@ -375,7 +368,7 @@ UserDefinedType<. Scope& scope, unique_ptr<Attributes> attributes .>
      //Bpl.Type/*!*/ body = dummyType; bool synonym = false; 
 .)
   Identifier<id>
-  [ WhiteSpaceIdentifiers<paramTokens> ]
+  [ IdentifiersWS<paramTokens> ]
   [
     "=" Type<out body>
     (. synonym = true; .)
@@ -456,7 +449,7 @@ ProcSignature<.bool allowWhereClausesOnFormals, out IToken/*!*/ name, out List<T
 Spec<.List<Requires>/*!*/ pre, List<IdentifierExpr>/*!*/ mods, List<Ensures>/*!*/ post.>
 = (.Contract.Requires(pre != null); Contract.Requires(mods != null); Contract.Requires(post != null); List<IToken>/*!*/ ms; .)
   ( "modifies"
-    [ Identifiers<out ms>        (. foreach(IToken/*!*/ m in ms){
+    [ IdentifiersCS<out ms>        (. foreach(IToken/*!*/ m in ms){
                                  Contract.Assert(m != null);
                                  mods.Add(new IdentifierExpr(m, m.val));
                                }
@@ -512,7 +505,7 @@ TransferCmd<out TransferCmd/*!*/ tc>
      List<String> ss = new List<String>();
   .)
   ( "goto"             (. y = t; .)
-    Identifiers<out xs>     (. foreach(IToken/*!*/ s in xs){
+    IdentifiersCS<out xs>     (. foreach(IToken/*!*/ s in xs){
                             Contract.Assert(s != null);
                             ss.Add(s.val); }
                           tc = new GotoCmd(y, ss);
@@ -635,7 +628,7 @@ HavocCmd<. unique_ptr<Cmd>& c .>
      list<unique_ptr<Identifier>> ids 
   .)
   "havoc"               (. pos = t; .)
-  Identifiers<ids> ";"  (. c = new HavocCmd(x,ids); .)
+  IdentifiersCS<ids> ";"  (. c = new HavocCmd(x,ids); .)
   .
 
 YieldCmd<. unique_ptr<Cmd>& c .>
@@ -752,21 +745,18 @@ Proposition<out Expr/*!*/ e>
   .
 
 /*------------------------------------------------------------------------*/
-Identifiers<. vector<pIdentifier>& ids .>
-= (.Contract.Ensures(Contract.ValueAtReturn(out xs) != null); IToken/*!*/ id; xs = new List<IToken>(); .)
-  Identifier<out id>                 (. xs.Add(id); .)
-  { "," Identifier<out id>           (. xs.Add(id); .)
-  }
-  .
+IdentifiersCS<. vector<pIdentifier>& ids .>
+= (. pIdentifier id; .)
+        Identifier<out id>           (. ids.push_back(id); .)
+  { "," Identifier<out id>           (. ids.push_back(id); .) }
+.
 
 /*------------------------------------------------------------------------*/
-WhiteSpaceIdentifiers<.out List<IToken>/*!*/ xs.>
-= (. Contract.Ensures(Contract.ValueAtReturn(out xs) != null); IToken/*!*/ id; xs = new List<IToken>(); .)
-  Identifier<out id>                 (. xs.Add(id); .)
-  { Identifier<out id>               (. xs.Add(id); .)
-  }
-  .
-
+IdentifiersWS<. vector<pIdentifier> ids .>
+= (. pIdentifier id; .)
+    Identifier<out id>           (. ids.push_back(id); .)
+  { Identifier<out id>           (. ids.push_back(id); .) }
+.
 /*------------------------------------------------------------------------*/
 Expressions<.out List<Expr>/*!*/ es.>
 = (. Contract.Ensures(Contract.ValueAtReturn(out es) != null); Expr/*!*/ e; es = new List<Expr>(); .)
@@ -1154,7 +1144,7 @@ SpecBlock<. list<Block>& blocks .>
   Identifier<id> ":"
   { Cmd<cs> }
   ( "goto"                      (. pos2 = toTextPos(t); .)
-    Identifiers<nexts>          (. b = new Block(id, cs, new GotoCmd(pos2,nexts)) .)
+    IdentifiersCS<nexts>          (. b = new Block(id, cs, new GotoCmd(pos2,nexts)) .)
   | "return"                    (. pos2 = toTextPos(t); .)
     Expression<out e>           (. b = new Block(id, cs, new ReturnExprCmd(pos2,e)); .)
   ) (. blocks.push_back(move(b)) .)
@@ -1284,6 +1274,5 @@ Float<. Rational& r, TextPosition& pos .>
      }
   .)
   .
-
 
 END BoogiePL.
