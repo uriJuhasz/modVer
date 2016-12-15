@@ -124,7 +124,7 @@ ConstantsDef<. Program& scope .>
   "const"                                   (. pos = toPos(t); .)
   AttributesP<attributes>
   [ "unique"                                (. unique = true;  .) ]
-  IdentifiersCS<ids> ":" Type<type>
+  IdentifiersCS<ids> ":" TypeP<type>
   [ OrderSpec<*orderSpec> ]
   (.  for (auto& id : ids) 
     scope.addVariableDef(
@@ -157,12 +157,12 @@ OrderSpecParent<. ConstantOrderSpec& orderSpec .>
 GlobalVarDefs<. Scope& scope .>
 = (. TextPosition pos;
      Attributes attributes; .)
-  "var"                                     (. pos = toPos(t) .)
+  "var"                                     (. pos = toPos(t); .)
   AttributesP<attributes>
-  IdsTypeWheres<. [const attributes&,scope&]{
-    pIdentifier&& id, const Type& type, pExpression&& e => 
+  IdsTypeWheres<. [&attributes,&scope]
+    (pIdentifier&& id, const Type& type, pExpression&& e){
         scope.addVariableDef( make_unique<GlobalVariable>(
-            pos, cloneC(attributes), move(id), type->clone(), move(e) ); } .> 
+            id->pos, cloneC(attributes), move(id), type.clone(), move(e) )); } .> 
   ";"
   .
 
@@ -176,7 +176,7 @@ IdsTypeWhere<. function<void(pIdentifier&&, const Type&, pExpression&&)> action 
      pType type;  
      pExpression whereExp; 
   .)
-  IdentifiersCS<ids> ":" Type<type>
+  IdentifiersCS<ids> ":" TypeP<type>
   [ "where" Expression<whereExp>  ]
 	  (. for (auto& id : ids)
 	       action(id, type, whereExp);
@@ -198,7 +198,7 @@ FunctionDef<. Scope& scope .>
   [ TypeParams<typeParams> ]
   "(" [ VarOrTypeArgC<args,argNames> { "," VarOrTypeArgC<args,argNames> } ] ")"
   (   "returns" "(" VarOrTypeAsType<resultType> ")"
-    | ":" Type<resultType> )
+    | ":" TypeP<resultType> )
   ( "{" Expression<body> "}" | ";" )
   (. scope.addFunctionDef( make_unique<Function>(
     	pos, 
@@ -216,8 +216,8 @@ FunctionDef<. Scope& scope .>
 
 VarOrTypeAsType<. pType& type .>
   = (. pIdentifier id; .)
-    (IF (isIdColon) ident colon Type<type> )
-    | Type<type>
+    (IF (isIdColon) ident colon TypeP<type> )
+    | TypeP<type>
 .
 
 VarOrTypeArgC<. vector<pType>& args, vector<pIdentifier>& argNames .>
@@ -226,8 +226,8 @@ VarOrTypeArgC<. vector<pType>& args, vector<pIdentifier>& argNames .>
 .
 
 VarOrTypeArg<. pType& type, pIdentifier& id .>
-= (   ( IF (isIdColon) Identifier<id> ":" Type<Type> )
-    | (                                   Type<Type> ))
+= (   ( IF (isIdColon) Identifier<id> ":" TypeP<Type> )
+    | (                                   TypeP<Type> ))
 .
 
 
@@ -288,7 +288,7 @@ AttributesIdsTypeWhere<. bool allowAttributes, bool allowWhereClauses, string co
 
 /*------------------------------------------------------------------------*/
 
-Type<. unique_ptr<Type>& type .>
+TypeP<. unique_ptr<Type>& type .>
 = (  TypeAtom<type>
   | TypeConstructor<type>
   | MapType<type>)
@@ -298,7 +298,7 @@ TypeAtom<. unique_ptr<Type>& type .>
 =   "int"              (. type = new BasicType(t, SimpleType.Int); .)
   | "real"             (. type = new BasicType(t, SimpleType.Real); .)
   | "bool"             (. type = new BasicType(t, SimpleType.Bool); .)
-  | "(" Type<type> ")"
+  | "(" TypeP<type> ")"
  .
 
 TypeConstructor<. unique_ptr<Type>& type .>
@@ -329,15 +329,15 @@ MapType<. unique_ptr<Type>& type .>
    .)
   [ TypeParams<typeParameters> ]
   "[" (. pos = t .) [ TypesCS<arguments> ] "]"
-  Type<result>
+  TypeP<result>
   (. type = new MapType(pos, typeParameters, arguments, result); .)
 .
 
 
 TypesCS<.List<Bpl.Type>/*!*/ ts.>
 = (. Contract.Requires(ts != null); Bpl.Type/*!*/ ty; .)
-  Type<out ty>                 (. ts.Add(ty); .)
-  { "," Type<out ty>           (. ts.Add(ty); .)
+  TypeP<out ty>                 (. ts.Add(ty); .)
+  { "," TypeP<out ty>           (. ts.Add(ty); .)
   }
   .
 
@@ -375,7 +375,7 @@ UserDefinedType<. Program& prog, Attributes attributes .>
   .)
   Identifier<id>
   [ IdentifiersWS<params> ]
-  [ "=" Type<body> ]
+  [ "=" TypeP<body> ]
   (. TypeParams tParams;
      for (auto pid : params) tParams.push_back(make_unique<TypeVariable>(move(pid)));
      prog.addTypedef( body ? make_unique<TypeSynonymDef>(id,tParams,body)
@@ -384,33 +384,38 @@ UserDefinedType<. Program& prog, Attributes attributes .>
 
 
 /*------------------------------------------------------------------------*/
-ProcedureP<. Scope& scope .>
-= (. Contract.Ensures(Contract.ValueAtReturn(out proc) != null); IToken/*!*/ x;
-     List<TypeVariable>/*!*/ typeParams;
-     List<Variable>/*!*/ ins, outs;
-     List<Requires>/*!*/ pre = new List<Requires>();
-     List<IdentifierExpr>/*!*/ mods = new List<IdentifierExpr>();
-     List<Ensures>/*!*/ post = new List<Ensures>();
+ProcSpec<. List<Requires>/*!*/ pre, List<IdentifierExpr>/*!*/ mods, List<Ensures>/*!*/ post.>
+= (.Contract.Requires(pre != null); Contract.Requires(mods != null); Contract.Requires(post != null); List<IToken>/*!*/ ms; .)
+  ( "modifies"
+    [ IdentifiersCS<out ms>        (. foreach(IToken/*!*/ m in ms){
+                                 Contract.Assert(m != null);
+                                 mods.Add(new IdentifierExpr(m, m.val));
+                               }
+                            .)
+    ] ";"
+  | "free" SpecPrePost<true, pre, post>
+  | SpecPrePost<false, pre, post>
+  )
+ .
 
-     List<Variable>/*!*/ locals = new List<Variable>();
-     StmtList/*!*/ stmtList;
-     QKeyValue kv = null;
-     impl = null;
+ProcedureP<. Program& prog .>
+= (. Attribtues attributes;
+     pIdentifier    id;
+     pProcSignature sig;
+     pProcSpec      spec;
   .)
 
   "procedure"
-  ProcSignature<true, out x, out typeParams, out ins, out outs, out kv>
+  AttributesP<attributes>
+  Identifier<id>
+  ProcSignature<true, sig>
   ( ";"
-    { Spec<pre, mods, post> }
-  | { Spec<pre, mods, post> }
-    ImplBody<out locals, out stmtList>
-    (.
-      impl = new Implementation(x, x.val, typeParams,
-                                Formal.StripWhereClauses(ins), Formal.StripWhereClauses(outs), locals, stmtList, kv == null ? null : (QKeyValue)kv.Clone(), this.errors);
-    .)
+    { ProcSpec<spec> }
+  | { ProcSpec<spec> }
+    ImplBody<. prog, id->clone(), cloneC(attributes), sig->cloneWOWhere(), spec->clone() .>
   )
-  (. proc = new Procedure(x, x.val, typeParams, ins, outs, pre, mods, post, kv); .)
-  .
+  (. prog.addProcedure( make_unique<Procedure>(move(id), move(attributes), move(sig), move(spec))); .)
+.
 
 
 ImplementationP<. Scope& scope .>
@@ -428,34 +433,6 @@ ImplementationP<. Scope& scope .>
     (. impl = new Implementation(x, x.val, typeParams, ins, outs, locals, stmtList, kv, this.errors); .)
   .
 
-
-ProcSignature<.bool allowWhereClausesOnFormals, out IToken/*!*/ name, out List<TypeVariable>/*!*/ typeParams,
-              out List<Variable>/*!*/ ins, out List<Variable>/*!*/ outs, out QKeyValue kv.>
-= (. Contract.Ensures(Contract.ValueAtReturn(out name) != null); Contract.Ensures(Contract.ValueAtReturn(out typeParams) != null); Contract.Ensures(Contract.ValueAtReturn(out ins) != null); Contract.Ensures(Contract.ValueAtReturn(out outs) != null);
-     IToken/*!*/ typeParamTok; typeParams = new List<TypeVariable>();
-     outs = new List<Variable>(); kv = null; .)
-  AttributesP<attributes>
-  Identifier<out name>
-  [ TypeParams<out typeParamTok, out typeParams> ]
-  ProcFormals<true, allowWhereClausesOnFormals, out ins>
-  [ "returns" ProcFormals<false, allowWhereClausesOnFormals, out outs> ]
-  .
-
-
-Spec<.List<Requires>/*!*/ pre, List<IdentifierExpr>/*!*/ mods, List<Ensures>/*!*/ post.>
-= (.Contract.Requires(pre != null); Contract.Requires(mods != null); Contract.Requires(post != null); List<IToken>/*!*/ ms; .)
-  ( "modifies"
-    [ IdentifiersCS<out ms>        (. foreach(IToken/*!*/ m in ms){
-                                 Contract.Assert(m != null);
-                                 mods.Add(new IdentifierExpr(m, m.val));
-                               }
-                            .)
-    ] ";"
-  | "free" SpecPrePost<true, pre, post>
-  | SpecPrePost<false, pre, post>
-  )
-  .
-
 SpecPrePost<. bool free, list<Requires>& pre, list<Ensures>& post .>
 = (. Expr/*!*/ e; Token tok = null; QKeyValue kv = null; .)
   ( "requires"              (. tok = t; .)
@@ -467,14 +444,26 @@ SpecPrePost<. bool free, list<Requires>& pre, list<Ensures>& post .>
   )
   .
 
-/*------------------------------------------------------------------------*/
-
-ImplBody<.out List<Variable>/*!*/ locals, out StmtList/*!*/ stmtList.>
-= (. Contract.Ensures(Contract.ValueAtReturn(out locals) != null); Contract.Ensures(Contract.ValueAtReturn(out stmtList) != null); locals = new List<Variable>(); .)
+ImplBody<. Program& prog, pIdentifier&& id, Attributes&& attributes, pProcSig&& sig, pProcSpec&& spec .>
+= (. vector<LocalVariable> localsl .)
   "{"
   { LocalVar<locals> }
   StmtList<out stmtList>
   .
+
+ProcSignature<. pProcSignature& sig .>
+= (. IToken/*!*/ typeParamTok; typeParams = new List<TypeVariable>();
+     outs = new List<Variable>(); kv = null; .)
+  [ TypeParams<out typeParamTok, out typeParams> ]
+  ProcFormals<true, allowWhereClausesOnFormals, out ins>
+  [ "returns" ProcFormals<false, allowWhereClausesOnFormals, out outs> ]
+.
+
+
+
+
+/*------------------------------------------------------------------------*/
+
 
 /* the StmtList also reads the final curly brace */
 StmtList<. unique_ptr<StmtList>& stmtList .>
@@ -961,7 +950,7 @@ CoercionExpression<out Expr/*!*/ e>
   ArrayExpression<out e>
   { ":"                     (. x = t; .)
     (
-       Type<out coercedTo>   (. e = Expr.CoerceType(x, e, coercedTo); .)
+       TypeP<out coercedTo>   (. e = Expr.CoerceType(x, e, coercedTo); .)
     |
       Nat<out bn>           /* This means that we really look at a bitvector
                                expression t[a:b] */

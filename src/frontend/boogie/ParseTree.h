@@ -324,28 +324,32 @@ namespace ParseTree{
     
     typedef unique_ptr<SpecExpression> pSpecExpression;
     class ProcSignature : public PTreeNode{
+        TypeParameters         tParams;
         vector<pLocalVariable> inputs;
         vector<pLocalVariable> outputs;
-
+    };
+    typedef unique_ptr<ProcSignature> pProcSignature;
+    class ProcSpec : public PTreeNode{
         vector<pVariableExpression> modifies;
         vector<pSpecExpression> preconditions;
         vector<pSpecExpression> postconditions;
     };
-    typedef unique_ptr<ProcSignature> pProcSignature;
+    typedef unique_ptr<ProcSpec> pProcSpec;
     
     class ProcedureSC : public PTreeNode{
     protected:
-        ProcedureSC(pIdentifier&& id, Attributes&& attributes, pProcSignature&& sig)
-            : id(move(id)), attributes(move(attributes)), sig(move(sig)) {}
+        ProcedureSC(pIdentifier&& id, Attributes&& attributes, pProcSignature&& sig, pProcSpec&& spec)
+            : id(move(id)), attributes(move(attributes)), sig(move(sig)), spec(move(spec)) {}
     public:
         virtual ~ProcedureSC() = 0;
         pIdentifier id;
         Attributes attributes;
         pProcSignature sig;
+        pProcSpec spec;
     };
     class Procedure : public ProcedureSC{
-        Procedure(pIdentifier&& id, Attributes&& attributes, pProcSignature&& sig)
-            : ProcedureSC( move(id), move(attributes), move(sig)) {}
+        Procedure(pIdentifier&& id, Attributes&& attributes, pProcSignature&& sig, pProcSpec&& spec)
+            : ProcedureSC( move(id), move(attributes), move(sig), move(spec)) {}
     };
     typedef unique_ptr<Procedure> pProcedure;
     
@@ -355,8 +359,8 @@ namespace ParseTree{
     
     class Implementation : public ProcedureSC{
         Implementation(
-            pIdentifier&& id, Attributes&& attributes, pProcSignature&& sig, vector<pVariable>&& pLocals, pStatement&& body)
-            : ProcedureSC( move(id), move(attributes), move(sig)), 
+            pIdentifier&& id, Attributes&& attributes, pProcSignature&& sig, pProcSpec&& spec, vector<pVariable>&& pLocals, pBlock&& body)
+            : ProcedureSC( move(id), move(attributes), move(sig), move(spec)), 
               locals(move(locals)), body(move(body)) {}
         pLocals locals;
         pStatement body;
