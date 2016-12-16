@@ -77,6 +77,7 @@ namespace ParseTree{
     //Types
     class Type;
     typedef unique_ptr<Type> pType;
+    typedef vector<pType> Types;
     class Type : public PTreeNode{
     public:
         virtual pType clone() const = 0;
@@ -212,7 +213,7 @@ namespace ParseTree{
     class ConstantOrderSpec : public PTreeNode {
     	public:
     		bool specified = false;
-    		bool ChildrenComplete = false;
+    		bool complete = false;
     		vector<ConstantParentSpec> parents;
     		pConstantOrderSpec clone() const;
     };
@@ -234,6 +235,10 @@ namespace ParseTree{
         {}
         pExpression whereClause;
     };
+    
+    class BoundVariable;
+    typedef unique_ptr<BoundVariable> pBoundVar;
+    typedef vector<pBoundVar> BoundVars;
     class BoundVariable : public Variable{
     public:
         BoundVariable(const TextPosition& _textPos,
@@ -258,7 +263,8 @@ namespace ParseTree{
                    id->pos,
                    move(attributes),
                    move(id),
-                   move(type))
+                   move(type),
+                   0)
         {}
     };
     enum class FormalDir{ In, Out };
@@ -270,7 +276,8 @@ namespace ParseTree{
                  pType&&             type,
                  FormalDir           dir)
                 : Variable(
-                   attributes,
+                   id->pos,
+                   move(attributes),
                    move(id),
                    move(type),
                     (dir == FormalDir::In ? Variable::INPUT : Variable::OUTPUT))
@@ -288,13 +295,13 @@ namespace ParseTree{
     public:
         Function(
         	const TextPosition& pos,
-            Attributes&&      attributes,
-            pIdentifier&&     id,
-            TypeParameters&&  typeParameters,
-            vector<pType>&&   argTypes,
-            pType&&           resultType,
-            vector<pIdentifier>&& argNames,
-            pExpression       body)
+            Attributes&&     attributes,
+            pIdentifier&&    id,
+            TypeParameters&& typeParameters,
+            Types&&          argTypes,
+            pType&&          resultType,
+            Identifiers&&    argNames,
+            pExpression      body)
             : PTreeNode( pos ),
               attributes    (move(attributes)),
               id            (move(id)),
@@ -341,17 +348,27 @@ namespace ParseTree{
     typedef vector<pFormal> Formals;
     typedef unique_ptr<SpecExpression> pSpecExpression;
     typedef vector<pSpecExpression> SpecExpressions;
+    
+    class ProcSignature;
+    typedef unique_ptr<ProcSignature> pProcSignature;
     class ProcSignature : public PTreeNode{
+    public:
+        pProcSignature cloneWOWhere() const;
         TypeParameters tParams;
         Formals        formals;
     };
-    typedef unique_ptr<ProcSignature> pProcSignature;
+    
+    class ProcSpec;
+    typedef unique_ptr<ProcSpec> pProcSpec;
     class ProcSpec : public PTreeNode{
+    public:
+        ProcSpec(){}
+        pProcSpec clone() const;
+
         vector<pVariableExpression> modifies;
         SpecExpressions preconditions;
         SpecExpressions postconditions;
     };
-    typedef unique_ptr<ProcSpec> pProcSpec;
     
     class ProcedureSC : public PTreeNode{
     protected:
@@ -389,7 +406,6 @@ namespace ParseTree{
             pIdentifier&& id, Attributes&& attributes, pProcSignature&& sig, pProcSpec&& spec, pScopedBlocks&& body)
             : ProcedureSC( move(id), move(attributes), move(sig), move(spec)), 
               body(move(body)) {}
-        pLocals locals;
         pScopedBlocks body;
     };
     typedef unique_ptr<Implementation> pImplementation;
@@ -552,14 +568,17 @@ namespace ParseTree{
     // <editor-fold desc="Statements">
     class Statement : public PTreeNode{};
     class SimpleStatement : public Statement{};
-    class ControlStatement : public Statement{};
-    class CompoundStatement : public Statement{};
+    class ComplexStatement : public Statement{};
+    class ControlStatement : public ComplexStatement{};
+    class CompoundStatement : public ComplexStatement{};
     
     typedef unique_ptr<Statement> pStatement;
     typedef vector<pStatement> StatementSeq;
     
     typedef unique_ptr<SimpleStatement> pSimpleStatement;
     typedef vector<pSimpleStatement> SimpleStatementSeq;
+    
+    typedef unique_ptr<ComplexStatement> pComplexStatement;
     
     class Label;
     typedef unique_ptr<Label> pLabel;
@@ -582,8 +601,12 @@ namespace ParseTree{
     typedef unique_ptr<ScopedSimpleBlocks> pScopedSimpleBlocks;
     
     class Block : public PTreeNode{
+    public:
+        Block(Labels&& labels, SimpleStatementSeq&& statements, pComplexStatement&& endStatement)
+            : labels(move(labels)), statements(move(statements)), endStatement(move(endStatement)){}
         Labels labels;
-        StatementSeq statements;
+        SimpleStatementSeq statements;
+        pComplexStatement endStatement;
     };
     typedef unique_ptr<Block> pBlock;
     typedef vector<pBlock> BlockSeq;

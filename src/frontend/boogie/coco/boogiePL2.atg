@@ -47,6 +47,7 @@ bool isIdColon() {
 
 typedef function< void(Attributes&&, pIdentifier&&, const Type&, pExpression&&) > ActionAITW;
 typedef function< void(              pIdentifier&&, const Type&, pExpression&&) > ActionITW;
+typedef function< void(              pIdentifier&&, const Type&               ) > ActionIT;
 
 /*--------------------------------------------------------------------------*/
 CHARACTERS
@@ -119,22 +120,23 @@ TypeDefs<. Program& prog .>
 = (. Attributes attributes; .)
   "type"
   AttributesP<attributes>
-        UserDefinedType<prog, attributes>
-  { "," UserDefinedType<prog, attributes> }    
+        UserDefinedType<. prog, cloneC(attributes) .>
+  { "," UserDefinedType<. prog, cloneC(attributes) .> }    
   ";"
   .
 
-UserDefinedType<. Program& prog, Attributes attributes .>
-= (. pIdentifier id; vector<pId> params;
+UserDefinedType<. Program& prog, Attributes&& attributes .>
+= (. pIdentifier id; 
+     Identifiers params;
      pType body;
   .)
   Identifier<id>
   [ IdentifiersWS<params> ]
   [ "=" TypeP<body> ]
-  (. TypeParams tParams;
-     for (auto pid : params) tParams.push_back(make_unique<TypeVariable>(move(pid)));
-     prog.addTypedef( body ? make_unique<TypeSynonymDef>(id,tParams,body)
-                           : make_unique<TypeConstructorDef>(id,tParams) ); .)
+  (. TypeParameters tParams;
+     for (auto& pid : params) tParams.push_back(make_unique<TypeVariable>(move(pid)));
+     if (body) prog.addTypeDef(make_unique<TypeSynonymDef>(id,tParams,body));
+          else prog.addTypeDef(make_unique<TypeConstructorDef>(id,tParams) ); .)
 .
 
 /*------------------------------------------------------------------------*/
@@ -172,7 +174,7 @@ OrderSpec<. ConstantOrderSpec& orderSpec.>
 
 OrderSpecParent<. ConstantOrderSpec& orderSpec .>
 = (. bool unique = false;
-     pIdentifier id  .)
+     pIdentifier id;  .)
     [ "unique"             (. unique = true; .) ]
     Identifier<id>         (. orderSpec.parents.push_back(ConstantParentSpec(move(id), unique)); .)
 .
@@ -184,7 +186,7 @@ GlobalVarDefs<. Scope& scope .>
   "var"                                     (. pos = toPos(t); .)
   AttributesP<attributes>
   IdsTypeWheres<. [&attributes,&scope]
-    (auto id, auto type, auto e){
+    (pIdentifier&& id, const Type& type, pExpression&& e){
         scope.addVariableDef( make_unique<GlobalVariable>(
             id->pos, cloneC(attributes), move(id), type.clone(), move(e) )); } .> 
   ";"
@@ -196,7 +198,7 @@ FunctionDef<. Scope& scope .>
      Attributes     attributes;
      pIdentifier    id;
      TypeParameters typeParams;
-     Types          args;
+     Types          argTypes;
      Identifiers    argNames;
      pType          resultType;
      pExpression    body;
@@ -205,7 +207,7 @@ FunctionDef<. Scope& scope .>
   AttributesP<attributes> 
   Identifier<id>
   [ TypeParams<typeParams> ]
-  "(" [ VarOrTypeArgC<args,argNames> { "," VarOrTypeArgC<args,argNames> } ] ")"
+  "(" [ VarOrTypeArgC<argTypes,argNames> { "," VarOrTypeArgC<argTypes,argNames> } ] ")"
   (   "returns" "(" VarOrTypeAsType<resultType> ")"
     | ":" TypeP<resultType> )
   ( "{" Expression<body> "}" | ";" )
@@ -213,7 +215,7 @@ FunctionDef<. Scope& scope .>
     	pos, 
     	move(attributes), 
     	move(id),
-    	move(args),
+    	move(argTypes),
     	move(resultType),
       move(argNames),
     	move(body)));
@@ -224,12 +226,12 @@ FunctionDef<. Scope& scope .>
 .
 
 VarOrTypeAsType<. pType& type .>
-  = (. pIdentifier id; .)
-    (IF (isIdColon) ident colon TypeP<type> )
+  = 
+    IF (isIdColon()) ( ident colon TypeP<type> )
     | TypeP<type>
 .
 
-VarOrTypeArgC<. vector<pType>& args, vector<pIdentifier>& argNames .>
+VarOrTypeArgC<. Types& args, Identifiers& argNames .>
 = (. pType type, pIdentifier id; .)
     VarOrTypeArg<type,id> (. args.push_back(type); argNames.push_back(id); .)
 .
@@ -263,8 +265,8 @@ ProcedureP<. Program& prog .>
   Identifier<id>
   ProcSignature<sig>
   (   ";"  
-      { ProcSpec<spec> }
-    | { ProcSpec<spec> }
+      { ProcSpecP<*spec> }
+    | { ProcSpecP<*spec> }
       ImplBody<. prog, id->clone(), cloneC(attributes), sig->cloneWOWhere(), spec->clone() .>
   )
   (. prog.addProcedure( make_unique<Procedure>(move(id), move(attributes), move(sig), move(spec))); .)
@@ -280,22 +282,20 @@ ProcSignature<. pProcSignature& sig .>
 
 ProcFormals<. FormalDir dir, Formals& formals .>
 = "("
-  [ AttrsIdsTypeWheres< [dir,&formals](auto attrs,auto id, auto type, auto e)
-      {formals.push_back(make_unique<Formal>(move(attrs),move(id),move(type),move(e),dir));}
+  [ AttrsIdsTypeWheres<. [dir,&formals](auto attrs,auto id, auto type, auto e)
+      {formals.push_back(make_unique<Formal>(move(attrs),move(id),move(type),move(e),dir));} .> ]
   ")"
 .
 
-ProcSpec<. ProcSpec& spec .>
-= 
-  (   | "free" SpecPrePost<true, pre, post>
-  | SpecPrePost<false, pre, post>
-  )
- .
+ProcSpecP<. ProcSpec& spec .>
+=   Modifies<spec>
+  | SpecPrePost<spec>
+.
 
 Modifies<. ProcSpec& spec .>
 = (. Identifiers ids .)
   "modifies"
-    [ IdentifiersCS<out ids>  (. for (auto id : ids) spec.modifies.push_back(make_unique<VariableExpression>(move(id))); .) ]
+    [ IdentifiersCS<ids>  (. for (auto id : ids) spec.modifies.push_back(make_unique<VariableExpression>(move(id))); .) ]
     ";"
 .
 
@@ -324,8 +324,8 @@ ImplementationP<. Program& prog .>
   AttributesP<attributes>
   Identifier<id>
   ImplSignature<sig>
-  { ProcSpec<spec> }  
-  ImplBody<. prog, id, attributes, sig, spec .>
+  { ProcSpecP<*spec> }  
+  ImplBody<. prog, move(id), move(attributes), move(sig), move(spec) .>
 .
 
 ImplSignature<. pProcSignature& sig .>
@@ -339,23 +339,26 @@ ImplSignature<. pProcSignature& sig .>
 
 ImplFormals<. FormalDir dir, Formals& formals .>
 = "("
-  [ IdsTypeS< [dir,&formals](auto id, auto type)
-      {formals.push_back(make_unique<Formal>(move(id),move(type),input));}
+  [ IdsTypeS<. [dir,&formals](auto id, auto type)
+      {formals.push_back(make_unique<Formal>(move(id),move(type),input));} .> ]
   ")"
 .
 
-ImplBody<. Program& prog, pIdentifier&& id, Attributes&& attributes, pProcSig&& sig, pProcSpec&& spec .>
-= (. vector<LocalVariable> localsl .)
-  "{"
-  { LocalVar<locals> }
-  StmtList<out stmtList>
+ImplBody<. Program& prog, pIdentifier&& id, Attributes&& attributes, pProcSignature&& sig, pProcSpec&& spec .>
+= (. ScopedBlocks body .) 
+  ScopedBlocksP<body>
+  (. prog.addImplementation( make_unique<Implementation>(move(id), move(attributes), move(sig), move(spec), move(body))); .)
+.
+
+ScopedBlocksP<. ScopedBlocks& bs .>
+= "{"
+  { LocalVar<bs.locals> }
+  StmtList<bs.blocks> //eats up "}"
 .
 
 
-
-
 /*------------------------------------------------------------------------*/
-BoundVars<. IToken/*!*/ x, out List<Variable>/*!*/ ds.>
+BoundVarsP<. BoundVars& vars .>
 = (.
     Contract.Requires(x != null);
     Contract.Ensures(Contract.ValueAtReturn(out ds) != null);
@@ -367,24 +370,17 @@ BoundVars<. IToken/*!*/ x, out List<Variable>/*!*/ ds.>
   .
 
 /*------------------------------------------------------------------------*/
-
-
-LocalVar<. Scope& scope .>
+LocalVar<. Locals& locals .>
 = (. Attributes attributes; .)
   "var"
   AttributesP<attributes>
-  IdsTypeWheres<. [attributes&,scope&](auto id, auto type, auto e){ 
-    scope.addVariableDef( 
-            make_unique<LocalVariable>( cloneC(attributes), move(id), type.clone() )) } .> 
+  IdsTypeWheres<. [attributes&,locals&](auto id, auto type, auto e){ 
+    locals.push_back(make_unique<LocalVariable>( cloneC(attributes), move(id), type.clone() )) } .> 
   ";"
   .
 
 /*------------------------------------------------------------------------*/
 //IdsType variants
-
-IdType<. Identifiers id, pType type .>
-= Identifier<id> ":" TypeP<type>
-.
 
 IdsTypeS<. ActionIT action .>
   = IdsTypeF<action> { "," IdsTypeF<action> }
@@ -396,7 +392,7 @@ IdsTypeF<. ActionIT action .>
   IdentifiersCS<ids> ":" TypeP<type> (. for (auto& id : ids) action(move(id),type->clone()); .)
 .
 
-IdsType<. Identifiers ids, pType type .>
+IdsType<. Identifiers& ids, pType& type .>
   = IdentifiersCS<ids> ":" TypeP<type>
 .
 
@@ -417,11 +413,11 @@ IdsTypeWhere<.  ActionITW action .>
   .
 
 
-AttributesIdsTypeWheres<. ActionAITW action .>
-= AttributesIdsTypeWhere<action> { "," AttributesIdsTypeWhere<action> }
+AttrsIdsTypeWheres<. ActionAITW action .>
+= AttrsIdsTypeWhere<action> { "," AttrsIdsTypeWhere<action> }
 .
 
-AttributesIdsTypeWhere<. ActionAITW action .>
+AttrsIdsTypeWhere<. ActionAITW action .>
 = (. Attributes attributes; .)
   AttributesP<attributes>
   IdsTypeWhere<.[&attributes](auto id, auto type, auto e){action(cloneC(attributes),move(id),move(type),move(e));}.>
@@ -475,41 +471,41 @@ MapType<. unique_ptr<Type>& type .>
 .
 
 
-TypesCS<.List<Bpl.Type>/*!*/ ts.>
-= (. Contract.Requires(ts != null); Bpl.Type/*!*/ ty; .)
-  TypeP<out ty>                 (. ts.Add(ty); .)
-  { "," TypeP<out ty>           (. ts.Add(ty); .)
-  }
-  .
+TypeC<. Types& types .>
+= (. pType t; .)
+  TypeP<t>                 (. types.push_back(t); .)
+.
+
+TypesCS<. Types& types .>
+  = TypeC<types> { "," TypeC<types>}
+.
 
 TypeParams<. TypeParameters& typeParams .>
-=  (. vector<Identifier> ids; .)
-  "<"                         (.  startToken = t;  .)
+=  (. Identifiers ids; .)
+  "<"                         //(.  startToken = t;  .)
     IdentifiersCS<ids>
-  ">"                         (. for (auto& id : ids ) typeParams.push_back(new TypeVariable(id)); .)
+  ">"                         (. for (auto& id : ids ) typeParams.push_back(make_unique<TypeVariable>(move(id))); .)
   .
 
 /*------------------------------------------------------------------------*/
 /* the StmtList also reads the final curly brace */
-StmtList<. unique_ptr<StmtList>& stmtList .>
-= (. list<unique_ptr<BigBlock>> bigBlocks;
-  .)
-    { BigBlock<bigBlocks> } "}" (. stmtList = new StmtList(move(bigBlocks),t); .)
+StmtList<. BlockSeq& bs .>
+  = { BigBlock<bs> } "}" 
 .
 
-BigBlock<. list<unique_ptr<BigBlock>>& bigBlocks .>
-= (. unique_ptr<Label> label = nullptr;
-     list<unique_ptr<Cmd>> cmds;
-     unique_ptr<BBEndCmd> endCmd;
+BigBlock<. BlockSeq& bs .>
+= (. pLabel label;
+     SimpleStatementSeq cmds;
+     pComplexStatement  endCmd;
   .)
     ( IF(isLabel())
        Label<label> | () )
     { Cmd<cmds> }
     ( StructuredCmd<endCmd> | TransferCmd<endCmd> )
-    (. bigBlocks.push_back(new BigBlock(label,cmds, endCmd)); .)
+    (. bs.push_back(make_unique<Block>(label,cmds,endCmd)); .)
 .
 
-TransferCmd<out TransferCmd/*!*/ tc>
+TransferCmd<. ControlStatementSeq& ss .>
 = (. Contract.Ensures(Contract.ValueAtReturn(out tc) != null); tc = dummyTransferCmd;
      Token y;  List<IToken>/*!*/ xs;
      List<String> ss = new List<String>();
@@ -524,7 +520,7 @@ TransferCmd<out TransferCmd/*!*/ tc>
   ) ";"
   .
 
-StructuredCmd<out StructuredCmd/*!*/ ec>
+StructuredCmd<. pComplexStatement& cmd .>
 = (. Contract.Ensures(Contract.ValueAtReturn(out ec) != null); ec = dummyStructuredCmd;  Contract.Assume(cce.IsPeerConsistent(ec));
      IfCmd/*!*/ ifcmd;  WhileCmd/*!*/ wcmd;  BreakCmd/*!*/ bcmd;
   .)
@@ -761,10 +757,13 @@ IdentifiersCS<. Identifiers& ids .>
 .
 
 /*------------------------------------------------------------------------*/
-IdentifiersWS<. vector<pIdentifier> ids .>
+IdentifiersWS<. Identifiers& ids .>
+  = IdentifierC<ids> { IdentifierC<ids> }
+.
+
+IdentifierC<. Identifiers& ids .>
 = (. pIdentifier id; .)
-    Identifier<out id>           (. ids.push_back(id); .)
-  { Identifier<out id>           (. ids.push_back(id); .) }
+  Identifier<id> (. ids.push_back(move(id)); .)
 .
 /*------------------------------------------------------------------------*/
 Expressions<.out List<Expr>/*!*/ es.>
@@ -1056,8 +1055,8 @@ AtomExpression<. unique_ptr<Expression>& e .>
 
 LiteralExpression<. unique_ptr<Expression>& e .>
 = 
-    "false"           (. e = new LiteralExpression(toTextPos(t), false); .)
-  | "true"            (. e = new LiteralExpression(toTextPos(t), true); .)
+    "false"           (. e = new LiteralExpression(toPos(t), false); .)
+  | "true"            (. e = new LiteralExpression(toPos(t), true); .)
   | NatE<e>
   | Dec<e>            
   | FloatE<e>
@@ -1075,7 +1074,7 @@ FAExpression<. unique_ptr<Expression>& e .>
 
 OldExpression<. unique_ptr<Expression>& e .>
 = (.  TextPosition pos; .)
-  "old"                    (. pos = toTextPos(t); .)
+  "old"                    (. pos = toPos(t); .)
     "(" Expression<e> ")"    (. e = new OldExpression(pos, e); .)
 .
 
@@ -1094,7 +1093,7 @@ Binder<. TextPosition& pos, Binder& binder .>
       Forall                            (. binder = Binder::forall; .)
     | Exists                            (. binder = Binder::exists; .)
     | Lambda                            (. binder = Binder::lambda; .)
-                                        (. pos = toTextPos(t); .)
+                                        (. pos = toPos(t); .)
 .
 
 QuantifierBody<. TextPosition pos, Binder binder, unique_ptr<Expression>& e .>
@@ -1104,8 +1103,8 @@ QuantifierBody<. TextPosition pos, Binder binder, unique_ptr<Expression>& e .>
      unique_ptr<Attributes>     attributes;
      unique_ptr<Expression>     ie                 .)
   (
-    (   TypeParams<pos2,typeVars> [ BoundVars<vars> ]
-      | BoundVars<vars> )
+    (   TypeParams<pos2,typeVars> [ BoundVarsP<vars> ]
+      | BoundVarsP<vars> )
     QSep
     AttributesAndTriggers<attributes>
     Expression<ie>
@@ -1120,17 +1119,17 @@ QSep = "::" | '\u2022'.
 
 CastExpression<. unique_ptr<Expression>& e .>
 = (. unique_ptr<Function>   func;.)
-    ("int" |               (. func = new ArithmeticCoercion(toTextPos(t), ArithmeticCoercion.CoercionType.ToInt)  .)
-     "real"                (. func = new ArithmeticCoercion(toTextPos(t), ArithmeticCoercion.CoercionType.ToReal) .) )
+    ("int" |               (. func = new ArithmeticCoercion(toPos(t), ArithmeticCoercion.CoercionType.ToInt)  .)
+     "real"                (. func = new ArithmeticCoercion(toPos(t), ArithmeticCoercion.CoercionType.ToReal) .) )
   "(" Expression<e> ")"    (. e = new FAExpression(func.pos, func, e); .)
 .
 
 
 CodeExpression<. unique_ptr<Expression>& e .>
 = (. TextPosition pos;
-     list<Variable> locals;
+     Locals locals;
      list<Block>    blocks;   .)
-  "|{"   (. pos = toTextPos(t); .)
+  "|{"   (. pos = toPos(t); .)
     { LocalVar<locals> } SpecBlock<blocks> { SpecBlock<blocks> } 
   "}|" (. e = new CodeExpression(pos, locals, blocks); .)
   .
@@ -1152,17 +1151,17 @@ SpecBlock<. list<Block>& blocks .>
   .)
   Identifier<id> ":"
   { Cmd<cs> }
-  ( "goto"                      (. pos2 = toTextPos(t); .)
+  ( "goto"                      (. pos2 = toPos(t); .)
     IdentifiersCS<nexts>          (. b = new Block(id, cs, new GotoCmd(pos2,nexts)) .)
-  | "return"                    (. pos2 = toTextPos(t); .)
+  | "return"                    (. pos2 = toPos(t); .)
     Expression<out e>           (. b = new Block(id, cs, new ReturnExprCmd(pos2,e)); .)
   ) (. blocks.push_back(move(b)) .)
   ";"
   .
 
 AttributesP<. Attributes& attributes .>
-= (. attributes = new Attributes() .)
-  { "{" AttributeI<*attributes> "}" }
+= 
+  { "{" AttributeI<attributes> "}" }
 .
 
 AttributesAndTriggers<. unique_ptr<Attributes>& attributes, unique_ptr<Triggers> triggers .>
@@ -1176,11 +1175,11 @@ TriggerI<. Triggers& triggers .>
 .
 
 AttributeI<. Attributes& attributes .> 
-= (. unique_ptr<Attribute> attribute = new Attribute() .)
-    ":" Identifier<id>                     
+= (. pAttribute attribute(make_unique<Attribute>()) .)
+    ":" Identifier<attribute.id>                     
         [       AttributeParameter<attribute.params>
           { "," AttributeParameter<attribute.params> }
-        ]       (. attributes.add(attribute).)
+        ]       (. attributes.push_back(move(attribute)).)
 .  //Boogie takes { :nopats Expression } as a dis-unification constraint
 
 AttributeParameter<. list<unique_ptr<AttributeParam>>& params .>
@@ -1206,12 +1205,7 @@ IdentifierExpression<. unique_ptr<Expression>& e .> =
 .
 
 Identifier<. pIdentifier& id .> = 
-    ident (. id = make_unique<Identifier>(toTextPos(t),toIdentifier(t.val)); .)
-.
-
-IdentifierS<. Identifiers ids .> = 
-(. pIdentifier id .)
-    Identifier<id> (. ids.push_back(move(id)); .)
+    ident (. id = make_unique<Identifier>(toPos(t),toIdentifier(t->val)); .)
 .
 
 /*------------------------------------------------------------------------*/
