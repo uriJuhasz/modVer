@@ -45,6 +45,9 @@ bool isIdColon() {
   return (la.kind == _ident && scanner.peek().kind == _colon );
 } 
 
+typedef function< void(Attributes&&, pIdentifier&&, const Type&, pExpression&&) > ActionAITW;
+typedef function< void(              pIdentifier&&, const Type&, pExpression&&) > ActionITW;
+
 /*--------------------------------------------------------------------------*/
 CHARACTERS
   letter = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz".
@@ -112,31 +115,53 @@ BoogiePL
   .
 
 /*------------------------------------------------------------------------*/
+TypeDefs<. Program& prog .>
+= (. Attributes attributes; .)
+  "type"
+  AttributesP<attributes>
+        UserDefinedType<prog, attributes>
+  { "," UserDefinedType<prog, attributes> }    
+  ";"
+  .
+
+UserDefinedType<. Program& prog, Attributes attributes .>
+= (. pIdentifier id; vector<pId> params;
+     pType body;
+  .)
+  Identifier<id>
+  [ IdentifiersWS<params> ]
+  [ "=" TypeP<body> ]
+  (. TypeParams tParams;
+     for (auto pid : params) tParams.push_back(make_unique<TypeVariable>(move(pid)));
+     prog.addTypedef( body ? make_unique<TypeSynonymDef>(id,tParams,body)
+                           : make_unique<TypeConstructorDef>(id,tParams) ); .)
+.
+
+/*------------------------------------------------------------------------*/
 ConstantsDef<. Program& scope .>
 = (. TextPosition pos; 
-     bool unique = false; 
-     vector<pIdentifier> ids;
-     pType type;
-     Attributes attributes;
-     pConstantOrderSpec orderSpec(new ConstantOrderSpec());
-  .)
+     Attributes   attributes;
+     bool         unique = false; 
+     Identifiers  ids;
+     pType        type;
+     pConstantOrderSpec orderSpec(new ConstantOrderSpec()); .)
   
   "const"                                   (. pos = toPos(t); .)
   AttributesP<attributes>
   [ "unique"                                (. unique = true;  .) ]
-  IdentifiersCS<ids> ":" TypeP<type>
+  IdsType<ids,type>
   [ OrderSpec<*orderSpec> ]
-  (.  for (auto& id : ids) 
-    scope.addVariableDef(
-        make_unique<Constant>(
-            pos, 
-            cloneC(attributes), 
-            move(id), 
-            type->clone(),
-            unique, 
-            orderSpec->clone())); 
-  .)
   ";"
+                                            (.  for (auto& id : ids) 
+                                                    scope.addVariableDef(
+                                                        make_unique<Constant>(
+                                                            pos, 
+                                                            cloneC(attributes), 
+                                                            move(id), 
+                                                            type->clone(),
+                                                            unique, 
+                                                            orderSpec->clone())); 
+                                            .)
   .
 
 OrderSpec<. ConstantOrderSpec& orderSpec.>
@@ -144,7 +169,6 @@ OrderSpec<. ConstantOrderSpec& orderSpec.>
   [ OrderSpecParent<orderSpec> { ","  OrderSpecParent<orderSpec> } ]
   [ "complete"                                                       (. orderSpec.complete  = true; .) ] 
   .
-
 
 OrderSpecParent<. ConstantOrderSpec& orderSpec .>
 = (. bool unique = false;
@@ -160,41 +184,26 @@ GlobalVarDefs<. Scope& scope .>
   "var"                                     (. pos = toPos(t); .)
   AttributesP<attributes>
   IdsTypeWheres<. [&attributes,&scope]
-    (pIdentifier&& id, const Type& type, pExpression&& e){
+    (auto id, auto type, auto e){
         scope.addVariableDef( make_unique<GlobalVariable>(
             id->pos, cloneC(attributes), move(id), type.clone(), move(e) )); } .> 
   ";"
   .
 
 /*------------------------------------------------------------------------*/
-IdsTypeWheres<. function<void(pIdentifier&&, const Type&, pExpression&&)> action .>
-	= IdsTypeWhere<action> { "," IdsTypeWhere<action> }.
-
-/* context is allowed to be null if allowWhereClauses is true */
-IdsTypeWhere<. function<void(pIdentifier&&, const Type&, pExpression&&)> action .>
-= (. vector<pIdentifier> ids;  
-     pType type;  
-     pExpression whereExp; 
-  .)
-  IdentifiersCS<ids> ":" TypeP<type>
-  [ "where" Expression<whereExp>  ]
-	  (. for (auto& id : ids)
-	       action(id, type, whereExp);
-	  .)
-  .
-
-/*------------------------------------------------------------------------*/
 FunctionDef<. Scope& scope .>
-= (. TextPosition pos;
-     Attributes attributes;
-     pIdentifier id;
+= (. TextPosition   pos;
+     Attributes     attributes;
+     pIdentifier    id;
      TypeParameters typeParams;
-     vector<pType> args;
-     vector<pIdentifier> argNames;
-     pType resultType;
-     pExpression body;
+     Types          args;
+     Identifiers    argNames;
+     pType          resultType;
+     pExpression    body;
   .)
-  "function" (. pos=toPos(t); .) AttributesP<attributes> Identifier<id>
+  "function"                         (. pos=toPos(t); .) 
+  AttributesP<attributes> 
+  Identifier<id>
   [ TypeParams<typeParams> ]
   "(" [ VarOrTypeArgC<args,argNames> { "," VarOrTypeArgC<args,argNames> } ] ")"
   (   "returns" "(" VarOrTypeAsType<resultType> ")"
@@ -206,11 +215,11 @@ FunctionDef<. Scope& scope .>
     	move(id),
     	move(args),
     	move(resultType),
-        move(argNames),
+      move(argNames),
     	move(body)));
     	//Boogie makes func(a,b:T) into func(a:T,b:T) but func(a,b) as func(<anon0>:a,<anon1>:b)
     	//Boogie adds body as axiom if "inline" attribute is present 
-        //We ignore the return variable name - not usable anywhere
+        //We ignore the return variable name - not usable anywhere - Boogie has a bug
   .)
 .
 
@@ -232,27 +241,120 @@ VarOrTypeArg<. pType& type, pIdentifier& id .>
 
 
 /*------------------------------------------------------------------------*/
-LocalVar<. Scope& scope .>
-= (. Attributes attributes; .)
-  "var"
-  AttributesP<attributes>
-  IdsTypeWheres<. [attributes&,scope&]{ 
-       pIdentifier&& id, Type& type => scope.addVariableDef( 
-            make_unique<LocalVariable>( id->pos, cloneC(attributes), move(id), type->clone(), false, false )) } .> ";"
-  .
+AxiomP<. Program& prog .>
+= (. TextPosition pos;
+     Attributes attributes; 
+     pExpression e; .)
+  "axiom"                  (. pos = toPos(t); .)
+   AttributesP<attributes>
+   Proposition<e> ";"      (. prog.addAxiom(make_unique<Axiom>(pos, move(attributes), move(e))); .)
+ .
 
-ProcFormals<. bool incoming, bool allowWhereClauses, list<Variable>& ds .>
-= (. Contract.Ensures(Contract.ValueAtReturn(out ds) != null);
-     ds = new List<Variable>();
-     var dsx = ds;
-     var context = allowWhereClauses ? "procedure formals" : "the 'implementation' copies of formals";
+/*------------------------------------------------------------------------*/
+ProcedureP<. Program& prog .>
+= (. Attributes     attributes;
+     pIdentifier    id;
+     pProcSignature sig;
+     auto           spec(make_unique<ProcSpec>());
   .)
-  "("
-  [ AttrsIdsTypeWheres<allowWhereClauses, allowWhereClauses, context, delegate(TypedIdent tyd, QKeyValue kv) { dsx.Add(new Formal(tyd.tok, tyd, incoming, kv)); }>
-  ]
-  ")"
-  .
 
+  "procedure"
+  AttributesP<attributes>
+  Identifier<id>
+  ProcSignature<sig>
+  (   ";"  
+      { ProcSpec<spec> }
+    | { ProcSpec<spec> }
+      ImplBody<. prog, id->clone(), cloneC(attributes), sig->cloneWOWhere(), spec->clone() .>
+  )
+  (. prog.addProcedure( make_unique<Procedure>(move(id), move(attributes), move(sig), move(spec))); .)
+.
+
+ProcSignature<. pProcSignature& sig .>
+= (. TypeParams typeParameters;
+     Formals formals;.)
+  [ TypeParams<typeParameters> ]
+              ProcFormals<FormalDir::In,  formals>
+  [ "returns" ProcFormals<FormalDir::Out, formals> ]
+.
+
+ProcFormals<. FormalDir dir, Formals& formals .>
+= "("
+  [ AttrsIdsTypeWheres< [dir,&formals](auto attrs,auto id, auto type, auto e)
+      {formals.push_back(make_unique<Formal>(move(attrs),move(id),move(type),move(e),dir));}
+  ")"
+.
+
+ProcSpec<. ProcSpec& spec .>
+= 
+  (   | "free" SpecPrePost<true, pre, post>
+  | SpecPrePost<false, pre, post>
+  )
+ .
+
+Modifies<. ProcSpec& spec .>
+= (. Identifiers ids .)
+  "modifies"
+    [ IdentifiersCS<out ids>  (. for (auto id : ids) spec.modifies.push_back(make_unique<VariableExpression>(move(id))); .) ]
+    ";"
+.
+
+SpecPrePost<. ProcSpec& spec .>
+= (. TextPosition pos; 
+     bool free = false; 
+     SpecExpressions* dest;
+     Expression e; .)
+  ["free"                   (. free=true .)        ]
+  (   "requires"            (. dest = &spec.pre;  .)               
+    | "ensures"             (. dest = &spec.post; .)
+  )                         (. pos = toPos(t);    .)
+  AttributesP<attributes>
+  Proposition<e> ";"        (. dest.push_back(make_unique<SpecExpression>(pos,free,move(e))); .)
+.
+
+
+ImplementationP<. Program& prog .>
+= (. Attributes     attributes;
+     pIdentifier    id;
+     pProcSignature sig;
+     auto           spec(make_unique<ProcSpec>());
+  .)
+
+  "implementation"
+  AttributesP<attributes>
+  Identifier<id>
+  ImplSignature<sig>
+  { ProcSpec<spec> }  
+  ImplBody<. prog, id, attributes, sig, spec .>
+.
+
+ImplSignature<. pProcSignature& sig .>
+= (. TypeParams typeParameters;
+     Formals formals;
+     .)
+  [ TypeParams<typeParameters> ]
+              ImplFormals<FormalDir::In,  formals>
+  [ "returns" ImplFormals<FormalDir::Out, formals> ]
+.
+
+ImplFormals<. FormalDir dir, Formals& formals .>
+= "("
+  [ IdsTypeS< [dir,&formals](auto id, auto type)
+      {formals.push_back(make_unique<Formal>(move(id),move(type),input));}
+  ")"
+.
+
+ImplBody<. Program& prog, pIdentifier&& id, Attributes&& attributes, pProcSig&& sig, pProcSpec&& spec .>
+= (. vector<LocalVariable> localsl .)
+  "{"
+  { LocalVar<locals> }
+  StmtList<out stmtList>
+.
+
+
+
+
+/*------------------------------------------------------------------------*/
 BoundVars<. IToken/*!*/ x, out List<Variable>/*!*/ ds.>
 = (.
     Contract.Requires(x != null);
@@ -265,29 +367,68 @@ BoundVars<. IToken/*!*/ x, out List<Variable>/*!*/ ds.>
   .
 
 /*------------------------------------------------------------------------*/
-/* AttrsIdsTypeWheres is used with the declarations of formals and bound variables */
-AttrsIdsTypeWheres<. bool allowAttributes, bool allowWhereClauses, const string& context, 
-        std::function<void(TypedIdentifier&&, Attributes&&)> action .>
-=
-  AttributesIdsTypeWhere<allowAttributes, allowWhereClauses, context, action>
-  { "," AttributesIdsTypeWhere<allowAttributes, allowWhereClauses, context, action> }
+
+
+LocalVar<. Scope& scope .>
+= (. Attributes attributes; .)
+  "var"
+  AttributesP<attributes>
+  IdsTypeWheres<. [attributes&,scope&](auto id, auto type, auto e){ 
+    scope.addVariableDef( 
+            make_unique<LocalVariable>( cloneC(attributes), move(id), type.clone() )) } .> 
+  ";"
   .
-
-
-AttributesIdsTypeWhere<. bool allowAttributes, bool allowWhereClauses, string context, 
-                         std::function( void(TypedIdentifier&&, Attributes&&)) action .>
-= (. unique_ptr<Attributes> attributes; .)
-  AttributesP<attributes>    (. if (!allowAttributes) {
-                              kv = null;
-                              this.SemErr("attributes are not allowed on " + context);
-                            }
-                         .)
-  IdsTypeWhere<allowWhereClauses, context, delegate(TypedIdent tyd) { action(tyd, kv); }>
-  .
-
 
 /*------------------------------------------------------------------------*/
+//IdsType variants
 
+IdType<. Identifiers id, pType type .>
+= Identifier<id> ":" TypeP<type>
+.
+
+IdsTypeS<. ActionIT action .>
+  = IdsTypeF<action> { "," IdsTypeF<action> }
+.
+
+IdsTypeF<. ActionIT action .>
+  = (. Identifiers ids;
+       pType type; .)
+  IdentifiersCS<ids> ":" TypeP<type> (. for (auto& id : ids) action(move(id),type->clone()); .)
+.
+
+IdsType<. Identifiers ids, pType type .>
+  = IdentifiersCS<ids> ":" TypeP<type>
+.
+
+IdsTypeWheres<. ActionITW action .>
+	= IdsTypeWhere<action> { "," IdsTypeWhere<action> }
+.
+
+IdsTypeWhere<.  ActionITW action .>
+= (. vector<pIdentifier> ids;  
+     pType               type;  
+     pExpression         e; 
+  .)
+  IdsType<ids,type>
+  [ "where" Expression<e>  ]
+	  (. for (auto& id : ids)
+	       action(move(id), type->clone(), e->clone());
+	  .)
+  .
+
+
+AttributesIdsTypeWheres<. ActionAITW action .>
+= AttributesIdsTypeWhere<action> { "," AttributesIdsTypeWhere<action> }
+.
+
+AttributesIdsTypeWhere<. ActionAITW action .>
+= (. Attributes attributes; .)
+  AttributesP<attributes>
+  IdsTypeWhere<.[&attributes](auto id, auto type, auto e){action(cloneC(attributes),move(id),move(type),move(e));}.>
+.
+
+/*------------------------------------------------------------------------*/
+//Types
 TypeP<. unique_ptr<Type>& type .>
 = (  TypeAtom<type>
   | TypeConstructor<type>
@@ -301,16 +442,16 @@ TypeAtom<. unique_ptr<Type>& type .>
   | "(" TypeP<type> ")"
  .
 
-TypeConstructor<. unique_ptr<Type>& type .>
-=(. unique_ptr<Identifier> id;
-     list<unique_ptr<Type> args;
+TypeConstructor<. pType& type .>
+=(. pIdentifier id;
+    Types       args;
  .)
    Identifier<id> [TypeArgs<args>]   (. type = new UnresolvedTypeIdentifier(id, args); .)
 .
 
-TypeArgs<. list<unique_ptr<Type> types .>
-= (. unique_ptr<Identifier> id;
-     unique_ptr<Type> type;  .)
+TypeArgs<. Types types .>
+= (. pIdentifier id;
+     pType       type;  .)
   (
     ((  TypeAtom<type>    (. types.push_back(move(type)); .)
       | Identifier<id>    (. types.push_back(new UnresolvedTypeIdentifier(id)); .)
@@ -341,7 +482,6 @@ TypesCS<.List<Bpl.Type>/*!*/ ts.>
   }
   .
 
-
 TypeParams<. TypeParameters& typeParams .>
 =  (. vector<Identifier> ids; .)
   "<"                         (.  startToken = t;  .)
@@ -350,121 +490,6 @@ TypeParams<. TypeParameters& typeParams .>
   .
 
 /*------------------------------------------------------------------------*/
-AxiomP<. Program& prog .>
-= (. TextPosition pos;
-     Attributes attributes; 
-     pExpression e; .)
-  "axiom"                  (. pos = toPos(t); .)
-   AttributesP<attributes>
-   Proposition<e> ";"      (. prog.addAxiom(make_unique<Axiom>(pos, move(attributes), move(e))); .)
- .
-
-/*------------------------------------------------------------------------*/
-TypeDefs<. Program& prog .>
-= (. Attributes attributes; .)
-  "type"
-  AttributesP<attributes>
-        UserDefinedType<prog, attributes>
-  { "," UserDefinedType<prog, attributes> }    
-  ";"
-  .
-
-UserDefinedType<. Program& prog, Attributes attributes .>
-= (. pIdentifier id; vector<pId> params;
-     pType body;
-  .)
-  Identifier<id>
-  [ IdentifiersWS<params> ]
-  [ "=" TypeP<body> ]
-  (. TypeParams tParams;
-     for (auto pid : params) tParams.push_back(make_unique<TypeVariable>(move(pid)));
-     prog.addTypedef( body ? make_unique<TypeSynonymDef>(id,tParams,body)
-                           : make_unique<TypeConstructorDef>(id,tParams) ); .)
-.
-
-
-/*------------------------------------------------------------------------*/
-ProcSpec<. List<Requires>/*!*/ pre, List<IdentifierExpr>/*!*/ mods, List<Ensures>/*!*/ post.>
-= (.Contract.Requires(pre != null); Contract.Requires(mods != null); Contract.Requires(post != null); List<IToken>/*!*/ ms; .)
-  ( "modifies"
-    [ IdentifiersCS<out ms>        (. foreach(IToken/*!*/ m in ms){
-                                 Contract.Assert(m != null);
-                                 mods.Add(new IdentifierExpr(m, m.val));
-                               }
-                            .)
-    ] ";"
-  | "free" SpecPrePost<true, pre, post>
-  | SpecPrePost<false, pre, post>
-  )
- .
-
-ProcedureP<. Program& prog .>
-= (. Attribtues attributes;
-     pIdentifier    id;
-     pProcSignature sig;
-     pProcSpec      spec;
-  .)
-
-  "procedure"
-  AttributesP<attributes>
-  Identifier<id>
-  ProcSignature<true, sig>
-  ( ";"
-    { ProcSpec<spec> }
-  | { ProcSpec<spec> }
-    ImplBody<. prog, id->clone(), cloneC(attributes), sig->cloneWOWhere(), spec->clone() .>
-  )
-  (. prog.addProcedure( make_unique<Procedure>(move(id), move(attributes), move(sig), move(spec))); .)
-.
-
-
-ImplementationP<. Scope& scope .>
-= (. Contract.Ensures(Contract.ValueAtReturn(out impl) != null); IToken/*!*/ x;
-     List<TypeVariable>/*!*/ typeParams;
-     List<Variable>/*!*/ ins, outs;
-     List<Variable>/*!*/ locals;
-     StmtList/*!*/ stmtList;
-     QKeyValue kv;
-  .)
-
-  "implementation"
-  ProcSignature<false, out x, out typeParams, out ins, out outs, out kv>
-  ImplBody<out locals, out stmtList>
-    (. impl = new Implementation(x, x.val, typeParams, ins, outs, locals, stmtList, kv, this.errors); .)
-  .
-
-SpecPrePost<. bool free, list<Requires>& pre, list<Ensures>& post .>
-= (. Expr/*!*/ e; Token tok = null; QKeyValue kv = null; .)
-  ( "requires"              (. tok = t; .)
-    AttributesP<attributes>
-    Proposition<out e> ";"  (. pre.Add(new Requires(tok, free, e, null, kv)); .)
-  | "ensures"               (. tok = t; .)
-    AttributesP<attributes>
-    Proposition<out e> ";"  (. post.Add(new Ensures(tok, free, e, null, kv)); .)
-  )
-  .
-
-ImplBody<. Program& prog, pIdentifier&& id, Attributes&& attributes, pProcSig&& sig, pProcSpec&& spec .>
-= (. vector<LocalVariable> localsl .)
-  "{"
-  { LocalVar<locals> }
-  StmtList<out stmtList>
-  .
-
-ProcSignature<. pProcSignature& sig .>
-= (. IToken/*!*/ typeParamTok; typeParams = new List<TypeVariable>();
-     outs = new List<Variable>(); kv = null; .)
-  [ TypeParams<out typeParamTok, out typeParams> ]
-  ProcFormals<true, allowWhereClausesOnFormals, out ins>
-  [ "returns" ProcFormals<false, allowWhereClausesOnFormals, out outs> ]
-.
-
-
-
-
-/*------------------------------------------------------------------------*/
-
-
 /* the StmtList also reads the final curly brace */
 StmtList<. unique_ptr<StmtList>& stmtList .>
 = (. list<unique_ptr<BigBlock>> bigBlocks;
@@ -729,10 +754,10 @@ Proposition<. pExpression& e .>
   .
 
 /*------------------------------------------------------------------------*/
-IdentifiersCS<. vector<pIdentifier>& ids .>
+IdentifiersCS<. Identifiers& ids .>
 = (. pIdentifier id; .)
-        Identifier<out id>           (. ids.push_back(id); .)
-  { "," Identifier<out id>           (. ids.push_back(id); .) }
+        Identifier<id>           (. ids.push_back(id); .)
+  { "," Identifier<id>           (. ids.push_back(id); .) }
 .
 
 /*------------------------------------------------------------------------*/
@@ -1180,8 +1205,13 @@ IdentifierExpression<. unique_ptr<Expression>& e .> =
     Identifier< id >  (. e = new IdentifierExpression(id); .)
 .
 
-Identifier<. unique_ptr<Identifier>& id .> = 
-    ident (. id = new Identifier(toTextPos(t),toIdentifier(t.val)); .)
+Identifier<. pIdentifier& id .> = 
+    ident (. id = make_unique<Identifier>(toTextPos(t),toIdentifier(t.val)); .)
+.
+
+IdentifierS<. Identifiers ids .> = 
+(. pIdentifier id .)
+    Identifier<id> (. ids.push_back(move(id)); .)
 .
 
 /*------------------------------------------------------------------------*/
