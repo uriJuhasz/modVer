@@ -425,13 +425,13 @@ AttrsIdsTypeWhere<. ActionAITW action .>
 
 /*------------------------------------------------------------------------*/
 //Types
-TypeP<. unique_ptr<Type>& type .>
+TypeP<. pType& type .>
 = (  TypeAtom<type>
   | TypeConstructor<type>
   | MapType<type>)
 .
 
-TypeAtom<. unique_ptr<Type>& type .>
+TypeAtom<. pType& type .>
 =   "int"              (. type = new BasicType(t, SimpleType.Int); .)
   | "real"             (. type = new BasicType(t, SimpleType.Real); .)
   | "bool"             (. type = new BasicType(t, SimpleType.Bool); .)
@@ -458,7 +458,7 @@ TypeArgs<. Types types .>
   .
 
 
-MapType<. unique_ptr<Type>& type .>
+MapType<. pType& type .>
 = (. TextPosition pos;
      TypeParameters typeParameters;
      vector<pType> arguments;
@@ -596,7 +596,7 @@ BreakCmd<out BreakCmd/*!*/ bcmd>
 
 /*------------------------------------------------------------------------*/
 
-Cmd<. unique_ptr<Cmd>& c .>
+Cmd<. pCmd& c .>
 /* ensures (c == null) != (label != null) */
 = (. IToken/*!*/ x; Expr/*!*/ e;
      List<IToken>/*!*/ xs;
@@ -615,7 +615,7 @@ Cmd<. unique_ptr<Cmd>& c .>
   | YieldCmd<c>
 .
   
-PredicateCmd<. unique_ptr<Cmd>& c .>
+PredicateCmd<. pCmd& c .>
 = (. TextPosition pos; 
      unique_ptr<Attributes> attributes;
      unique_ptr<Expression> e;
@@ -745,18 +745,11 @@ CallParams<bool isAsync, bool isFree, QKeyValue kv, IToken x, out Cmd c>
   .
 
 /*------------------------------------------------------------------------*/
-Proposition<. pExpression& e .>
-= Expression<e>
-  .
-
-/*------------------------------------------------------------------------*/
+//Identifiers
 IdentifiersCS<. Identifiers& ids .>
-= (. pIdentifier id; .)
-        Identifier<id>           (. ids.push_back(id); .)
-  { "," Identifier<id>           (. ids.push_back(id); .) }
+  =  IdentifierC<ids> { "," IdentifierC<id> }
 .
 
-/*------------------------------------------------------------------------*/
 IdentifiersWS<. Identifiers& ids .>
   = IdentifierC<ids> { IdentifierC<ids> }
 .
@@ -765,28 +758,27 @@ IdentifierC<. Identifiers& ids .>
 = (. pIdentifier id; .)
   Identifier<id> (. ids.push_back(move(id)); .)
 .
-/*------------------------------------------------------------------------*/
-Expressions<.out List<Expr>/*!*/ es.>
-= (. Contract.Ensures(Contract.ValueAtReturn(out es) != null); Expr/*!*/ e; es = new List<Expr>(); .)
-  Expression<out e>             (. es.Add(e); .)
-  { "," Expression<out e>       (. es.Add(e); .)
-  }
-  .
 
 /*------------------------------------------------------------------------*/
-ExpressionsCS<. list<unique_ptr<Expression>>& es.>
+/*------------------------------------------------------------------------*/
+//Expressions
+Proposition<. pExpression& e .>
+= Expression<e>
+  .
+
+ExpressionsCS<. Expressions& es.>
 = (. unique_ptr<Expression>& e .)
   Expression<e> (. es.push_back(e) .)
   { "," Expression<e> (. es.push_back(e) .) }
  .
 
-Expression<. unique_ptr<Expression>& e .>
+Expression<. pExpression& e .>
 = 
-    (IF (isUnaryIfExpression()) UnaryITEExpression<e> )
+    (IF (isUnaryITEExpression()) UnaryITEExpression<e> )
   | ( ImpliesExpression<false, e> { ExpressionR<e> } )
 .
 
-ExpressionR<. unique_ptr<Expression>& e0 .>
+ExpressionR<. pExpression& e0 .>
 = (. TextPosition pos; 
      unique_ptr<Expression> e1 .)
   EquivOp                       (. pos = t; .)
@@ -797,15 +789,12 @@ EquivOp = "<==>" | '\u21d4'.
 
 
 /*------------------------------------------------------------------------*/
-ImpliesExpression<. bool noExplies, out Expr/*!*/ e0 .>
+ImpliesExpression<. pExpression& e0 .>
 // = "ab" LogicalExpression<e0> "ba".
-= (. Contract.Ensures(Contract.ValueAtReturn(out e0) != null); IToken/*!*/ x; Expr/*!*/ e1; .)
-  LogicalExpression<out e0>
-  [
-    ImpliesOp      (. x = t; .)
-    /* recurse because implication is right-associative */
-    ImpliesExpression<true, out e1>
-                   (. e0 = Expr.Binary(x, BinaryOperator.Opcode.Imp, e0, e1); .)
+= (. TextPosition pos;
+     pExpression e1; .)
+  LogicalExpression<e0>
+  [ ImpliesExpressionR<e0> | ExpliesExpressionR<e0> ]
   |
     ExpliesOp      (. if (noExplies)
                         this.SemErr("illegal mixture of ==> and <==, use parentheses to disambiguate");
@@ -821,71 +810,100 @@ ImpliesExpression<. bool noExplies, out Expr/*!*/ e0 .>
   ]
   .
 
+ImpliesExpressionR<. pExpression& e0 .>
+=   (. TextPos p;
+       pExpression e1; .)
+    /* recurse because implication is right-associative */
+    ImpliesOp               (. pos = toPos(t); .)
+    ImpliesExpressionRR<e1> (. e0 = Expression::make(Operation::Implies, e0, e1); .)
+.
+
+ImpliesExpressionRR<. pExpression& e1 .>
+=   LogicalExpression<e1>      
+    [ ImpliesExpressionR<e1> ] 
+.
 
 ImpliesOp = "==>" | '\u21d2'.
+
+ExpliesExpressionR<. pExpression& e0 .>
+= ExpliesExpressionRR<e0> { ExpliesExpressionRR<e0> }
+.
+
+ExpliesExpressionRR<. pExpression& e0 .>
+=(. TextPos p;
+    pExpression e1; .)
+  ExpliesOp               (. pos = toPos(t) .)
+  LogicalExpression<e1>   (. e0 = Expression::make(Operation::Explies, e0, e1); .)
+.
+
 ExpliesOp = "<==" | '\u21d0'.
 
 /*------------------------------------------------------------------------*/
-LogicalExpression<out Expr/*!*/ e0>
-= (. Contract.Ensures(Contract.ValueAtReturn(out e0) != null); IToken/*!*/ x; Expr/*!*/ e1; .)
-  RelationalExpression<out e0>
-  [ AndOp          (. x = t; .)
-    RelationalExpression<out e1>
-    (. e0 = Expr.Binary(x, BinaryOperator.Opcode.And, e0, e1); .)
-    { AndOp        (. x = t; .)
-      RelationalExpression<out e1>
-      (. e0 = Expr.Binary(x, BinaryOperator.Opcode.And, e0, e1); .)
-    }
-  | OrOp           (. x = t; .)
-    RelationalExpression<out e1>
-    (. e0 = Expr.Binary(x, BinaryOperator.Opcode.Or, e0, e1); .)
-    { OrOp         (. x = t; .)
-      RelationalExpression<out e1>
-      (. e0 = Expr.Binary(x, BinaryOperator.Opcode.Or, e0, e1); .)
-    }
-  ]
-  .
+LogicalExpression<pExpression& e>
+= RelationalExpression<e> 
+  [ LogicalExpressionAnd<e> | LogicalExpressionOr<e> ]
+.
+
+LogicalExpressionAnd<pExpression& e>
+  = LogicalExpressionAndR<e> { LogicalExpressionAndR<e> }
+.
+
+LogicalExpressionAndR<pExpression& e0>
+  = (. TextPos p;
+       pExpression e1; .)
+  AndOp                    (. pos = toPos(t); .)
+  RelationalExpression<e1> (. e0 = Expression::make(Operation::And,e0,e1); .)
+.
+
+LogicalExpressionOr<pExpression& e>
+  = LogicalExpressionOrR<e> { LogicalExpressionOrR<e> }
+.
+
+LogicalExpressionOrR<pExpression& e0>
+  = (. TextPos p;
+       pExpression e1; .)
+  OrOp                     (. pos = toPos(t); .)
+  RelationalExpression<e1> (. e0 = Expression::make(Operation::Or,e0,e1); .)
+.
+
 
 AndOp = "&&" | '\u2227'.
 OrOp = "||" | '\u2228'.
 
 /*------------------------------------------------------------------------*/
-RelationalExpression<out Expr/*!*/ e0>
-= (. Contract.Ensures(Contract.ValueAtReturn(out e0) != null); IToken/*!*/ x; Expr/*!*/ e1; BinaryOperator.Opcode op; .)
-  BvTerm<out e0>
-  [ RelOp<out x, out op>
-    BvTerm<out e1>            (. e0 = Expr.Binary(x, op, e0, e1); .)
-  ]
-  .
+RelationalExpression<. pExpression& e0 .>
+= (. TextPosition pos;
+     pOperation op;
+     pExpression e1 .)
+  BvTerm<e0>
+  [ RelOp<pos,op> BvTerm<e1>            (. e0 = Expression::make(pos,op,e0,e1); .)  ]
+.
 
-RelOp<out IToken/*!*/ x, out BinaryOperator.Opcode op>
-=                  (.Contract.Ensures(Contract.ValueAtReturn(out x) != null); x = Token.NoToken; op=BinaryOperator.Opcode.Add/*(dummy)*/; .)
-  ( "=="           (. x = t; op=BinaryOperator.Opcode.Eq; .)
-  | "<"            (. x = t; op=BinaryOperator.Opcode.Lt; .)
-  | ">"            (. x = t; op=BinaryOperator.Opcode.Gt; .)
-  | "<="           (. x = t; op=BinaryOperator.Opcode.Le; .)
-  | ">="           (. x = t; op=BinaryOperator.Opcode.Ge; .)
-  | "!="           (. x = t; op=BinaryOperator.Opcode.Neq; .)
-  | "<:"           (. x = t; op=BinaryOperator.Opcode.Subtype; .)
-  | '\u2260'       (. x = t; op=BinaryOperator.Opcode.Neq; .)
-  | '\u2264'       (. x = t; op=BinaryOperator.Opcode.Le; .)
-  | '\u2265'       (. x = t; op=BinaryOperator.Opcode.Ge; .)
-  )
-  .
+RelOp<. TextPosition& pos, pOperation& op .>
+=                  
+  ( "=="               (. op = Operation::Eq; .)
+  | "<"                (. op = Operation::LT; .)
+  | ">"                (. op = Operation::GT; .)
+  | ( "<=" | '\u2264') (. op = Operation::LE; .)
+  | ( ">=" | '\u2265') (. op = Operation::GE; .)
+  | ("!=" | '\u2260')  (. op = Operation::NE; .)
+  | "<:"               (. op = Operation::Subtype; .)
+  ) (. pos = topPos(t) .)
+ .
 
 /*------------------------------------------------------------------------*/
-BvTerm<out Expr/*!*/ e0>
-= (. Contract.Ensures(Contract.ValueAtReturn(out e0) != null); IToken/*!*/ x; Expr/*!*/ e1; .)
+BvTerm<. pExpression& e0 .>
+= (. TextPosition pos; .)
   Term<out e0>
-  { "++"                  (. x = t; .)
-    Term<out e1>          (. e0 = new BvConcatExpr(x, e0, e1); .)
+  { "++"                  (. x = t; pExpression e1; .)
+    Term<out e1>          (. e0 = Expression::make(pos, Operation::BVConcat, e0, e1); .)
   }
-  .
+.
 
 
 /*------------------------------------------------------------------------*/
 Term<out Expr/*!*/ e0>
-= (.Contract.Ensures(Contract.ValueAtReturn(out e0) != null); IToken/*!*/ x; Expr/*!*/ e1; BinaryOperator.Opcode op; .)
+= (. IToken/*!*/ x; Expr/*!*/ e1; BinaryOperator.Opcode op; .)
   Factor<out e0>
   { AddOp<out x, out op>
     Factor<out e1>          (. e0 = Expr.Binary(x, op, e0, e1); .)
@@ -1096,17 +1114,18 @@ Binder<. TextPosition& pos, Binder& binder .>
                                         (. pos = toPos(t); .)
 .
 
-QuantifierBody<. TextPosition pos, Binder binder, unique_ptr<Expression>& e .>
+QuantifierBody<. TextPosition pos, Binder binder, pExpression& e .>
 = (. TextPosition pos2;
-     list<TypeVariable>         typeVars;
-     list<Variable>             vars;
-     unique_ptr<Attributes>     attributes;
-     unique_ptr<Expression>     ie                 .)
+     TypeParameters  typeVars;
+     BoundVars       vars;
+     Attributes      attributes;
+     Triggers        triggers;
+     pExpression     ie;                 .)
   (
-    (   TypeParams<pos2,typeVars> [ BoundVarsP<vars> ]
+    (   TypeParams<typeVars> [ BoundVarsP<vars> ]
       | BoundVarsP<vars> )
     QSep
-    AttributesAndTriggers<attributes>
+    AttributesAndTriggers<attributes,triggers>
     Expression<ie>
   ) (. e = new BinderExpression(pos, binder, move(attributes), move(triggers), move(typeVars), move(vars), move(ie)); .)
   .

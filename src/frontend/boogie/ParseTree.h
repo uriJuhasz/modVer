@@ -497,7 +497,13 @@ namespace ParseTree{
     typedef unique_ptr<VariableExpression> pVariableExpression;
     
     enum class Binder{ forall, exists, lambda };
-    class Operation{};
+    class Operation{
+    public:
+        static constexpr Operation Implies;
+        static constexpr Operation Explies;
+        static constexpr Operation And;
+        static constexpr Operation Or;
+    };
     typedef unique_ptr<Operation> pOperation;
     
     class FAExpression : public Expression{
