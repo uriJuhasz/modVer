@@ -31,19 +31,29 @@ void parse(){
 
 static TextPosition toPos(const Token* t){ return TextPosition(t->line,t->col); } 
 
-static string toIdentifier(const string& s){
+static wstring toIdentifier(const wstring& s){
     return s.starts_with('\\') ? s.sub_str(1) : s;
 }
 
 bool isLabel() {
   Token* t = la;
-  return (la.kind == _ident && scanner.peek().kind == _colon );
+  return (la->kind == _ident && scanner->peek()->kind == _colon );
 } 
 
 bool isIdColon() {
   Token* t = la;
-  return (la.kind == _ident && scanner.peek().kind == _colon );
+  return (la->kind == _ident && scanner->peek()->kind == _colon );
 } 
+
+bool isBVBound() {
+  if (!la->kind != _digits)
+    return false;
+  if (scanner->peek()->kind != _colon )
+    return false;
+  if (scanner->peek()->kind != _digits )
+    return false;
+  return true;
+}
 
 typedef function< void(Attributes&&, pIdentifier&&, const Type&, pExpression&&) > ActionAITW;
 typedef function< void(              pIdentifier&&, const Type&, pExpression&&) > ActionITW;
@@ -657,7 +667,7 @@ AssignCmd<. unique_ptr<Cmd>& cmd .>
   .)
     AssignLHS<lhss> { "," AssignLHS<lhss> }
     ":="                                   (. pos = toTextPos(t); .)
-    ExpressionsCS<rhss>
+    ExpressionCS<rhss>
     ";"                                    (. cmd new AssignCmd(pos, lhss, rhss); .)
 .
 
@@ -676,7 +686,7 @@ MapAssignIndex<. unique_ptr<AssignLHS>& lhs .>
      Expr e;
   .)
   "["                          (. pos = toTextPos(t); .)
-    [ ExpressionsCS<indices> ]
+    [ ExpressionCS<indices> ]
   "]"                          (. lhs = new MapAssignLhs(pos, lhs, indices); .)
   .
 
@@ -763,14 +773,17 @@ IdentifierC<. Identifiers& ids .>
 /*------------------------------------------------------------------------*/
 //Expressions
 Proposition<. pExpression& e .>
-= Expression<e>
-  .
+  = Expression<e>
+.
 
-ExpressionsCS<. Expressions& es.>
-= (. unique_ptr<Expression>& e .)
+ExpressionCS<. Expressions& es.>
+= ExpressionC<e> { "," ExpressionC<e> }
+.
+
+ExpressionC<. Expressions& es.>
+= (. pExpression e .)
   Expression<e> (. es.push_back(e) .)
-  { "," Expression<e> (. es.push_back(e) .) }
- .
+.
 
 Expression<. pExpression& e .>
 = 
@@ -795,20 +808,7 @@ ImpliesExpression<. pExpression& e0 .>
      pExpression e1; .)
   LogicalExpression<e0>
   [ ImpliesExpressionR<e0> | ExpliesExpressionR<e0> ]
-  |
-    ExpliesOp      (. if (noExplies)
-                        this.SemErr("illegal mixture of ==> and <==, use parentheses to disambiguate");
-                      x = t; .)
-    LogicalExpression<out e1>
-                   (. e0 = Expr.Binary(x, BinaryOperator.Opcode.Imp, e1, e0); .)
-    /* loop because explies is left-associative */
-    {
-      ExpliesOp    (. x = t; .)
-      LogicalExpression<out e1>
-                   (. e0 = Expr.Binary(x, BinaryOperator.Opcode.Imp, e1, e0); .)
-    }
-  ]
-  .
+.
 
 ImpliesExpressionR<. pExpression& e0 .>
 =   (. TextPos p;
@@ -894,86 +894,74 @@ RelOp<. TextPosition& pos, pOperation& op .>
 /*------------------------------------------------------------------------*/
 BvTerm<. pExpression& e0 .>
 = (. TextPosition pos; .)
-  Term<out e0>
-  { "++"                  (. x = t; pExpression e1; .)
-    Term<out e1>          (. e0 = Expression::make(pos, Operation::BVConcat, e0, e1); .)
+  Term<e0>
+  { "++"                  (. pos = toPos(t); pExpression e1; .)
+    Term<e1>              (. e0 = Expression::make(pos, Operation::BVConcat, e0, e1); .)
   }
 .
 
 
 /*------------------------------------------------------------------------*/
-Term<out Expr/*!*/ e0>
-= (. IToken/*!*/ x; Expr/*!*/ e1; BinaryOperator.Opcode op; .)
-  Factor<out e0>
-  { AddOp<out x, out op>
-    Factor<out e1>          (. e0 = Expr.Binary(x, op, e0, e1); .)
+Term<. pExpression& e0 .>
+= (. TextPosition pos; pExpression e1; .)
+  Factor<e0>
+  { AddOp<x, op>
+    Factor<e1>      (. e0 = Expr.Binary(x, op, e0, e1); .)
   }
-  .
+.
 
-AddOp<out IToken/*!*/ x, out BinaryOperator.Opcode op>
-=                  (.Contract.Ensures(Contract.ValueAtReturn(out x) != null); x = Token.NoToken; op=BinaryOperator.Opcode.Add/*(dummy)*/; .)
-  ( "+"            (. x = t; op=BinaryOperator.Opcode.Add; .)
-  | "-"            (. x = t; op=BinaryOperator.Opcode.Sub; .)
-  )
+AddOp<. TextPosition& pos, pOperation& op .>
+=                  
+  ( "+"            (. op = Operation::Add; .)
+  | "-"            (. op = Operation::Sub; .)
+  )                (. pos = toPos(t) .)
   .
 
 /*------------------------------------------------------------------------*/
-Factor<out Expr/*!*/ e0>
-= (.Contract.Ensures(Contract.ValueAtReturn(out e0) != null); IToken/*!*/ x; Expr/*!*/ e1; BinaryOperator.Opcode op; .)
-  Power<out e0>
-  { MulOp<out x, out op>
-    Power<out e1> (. e0 = Expr.Binary(x, op, e0, e1); .)
-  }
-  .
+Factor<. pExpression& e0 .>
+= (. TextPosition pos; Operation op; pExpression e1; .)
+  Power<e0>
+  { MulOp<pos, op> Power<e1> (. e0 = Expr.Binary(x, op, e0, e1); .) }
+.
 
-MulOp<out IToken/*!*/ x, out BinaryOperator.Opcode op>
-=                  (. Contract.Ensures(Contract.ValueAtReturn(out x) != null); x = Token.NoToken; op=BinaryOperator.Opcode.Add/*(dummy)*/; .)
-  ( "*"            (. x = t; op=BinaryOperator.Opcode.Mul; .)
-  | "div"          (. x = t; op=BinaryOperator.Opcode.Div; .)
-  | "mod"          (. x = t; op=BinaryOperator.Opcode.Mod; .)
-  | "/"            (. x = t; op=BinaryOperator.Opcode.RealDiv; .)
-  )
-  .
+MulOp<. TextPosition& pos, Operation& op .>
+=                  
+  ( "*"            (. op = Operation::Mul; .)
+  | "div"          (. op = Operation::Div; .)
+  | "mod"          (. op = Operation::Mod; .)
+  | "/"            (. op = Operation::DivR; .)
+  )                (. pos = toPos(t) .)
+.
 
 /*------------------------------------------------------------------------*/
-Power<out Expr/*!*/ e0>
-= (.Contract.Ensures(Contract.ValueAtReturn(out e0) != null); IToken/*!*/ x; Expr/*!*/ e1; .)
-  UnaryExpression<out e0>
-  [
-    "**"           (. x = t; .)
-    /* recurse because exponentation is right-associative */
-    Power<out e1>  (. e0 = Expr.Binary(x, BinaryOperator.Opcode.Pow, e0, e1); .)
+Power<. pExpression& e0 .>
+=  (. TextPosition pos; pExpression e1; .)
+  UnaryExpression<e0>
+  [ /* recurse because exponentation is right-associative */
+    "**"           (. pos = toPos(t); .)
+    Power<e1>      (. e0 = Expression::make(pos, Operation::Pow, e0, e1); .)
   ]
   .
 
 /*------------------------------------------------------------------------*/
-UnaryExpression<. unique_ptr<Expression>& e .>
-= (.  IToken x;
-     e = dummyExpr;
-  .)
-  ( "-"                        (. x = t; .)
-    UnaryExpression<out e>     (. e = Expr.Unary(x, UnaryOperator.Opcode.Neg, e); .)
-  | NegOp                      (. x = t; .)
-    UnaryExpression<out e>     (. e = Expr.Unary(x, UnaryOperator.Opcode.Not, e); .)
-  | CoercionExpression<out e>
-  )
-  .
+UnaryExpression<. pExpression& e .>
+= (. TextPosition pos; Operation op; .)
+    UnaryOp<pos,op> UnaryExpression<e>  (. e = Expression.make(pos,op,e); .)
+  | CoercionExpression<e>
+.
 
-UnaryITEExpression<. unique_ptr<Expression>& e .>
-= (. TextPosition pos;
-     Operand op;
-     e = dummyExpr;
-  .)
-  (
-    ( (   "-"                      (. op = Operand::Minus; .)
-        | NegOp                    (. op = Operand::Negate; .)
-      )                            (. pos = t; .)
-      UnaryITEExpression<e> )      (. e = new Expression(op, e); .) 
+UnaryITEExpression<. pExpression& e .>
+= (. TextPosition pos; Operation op; .)
+    UnaryOp<pos,op> UnaryITEExpression<e>  (. e = Expression.make(pos,op,e); .)
   | IfThenElseExpression<e>
-  )
-  .
+.
 
-NegOp = "!" | '\u00ac'.
+UnaryOp<. TextPosition& pos, Operation& op .>
+=                  
+  ( "-"                (. op = Operation::Minus; .)
+  | ( "!" | '\u00ac' ) (. op = Operation::Negate; .)
+  )                    (. pos = toPos(t) .)
+.
 
 /*------------------------------------------------------------------------*/
 
@@ -984,119 +972,85 @@ NegOp = "!" | '\u00ac'.
    will cause a parse error because "<" is treated as the beginning of a
    map type. */
 
-CoercionExpression<out Expr/*!*/ e>
-= (. Contract.Ensures(Contract.ValueAtReturn(out e) != null); IToken/*!*/ x;
-     Bpl.Type/*!*/ coercedTo;
-     BigNum bn;
+CoercionExpression<. pExpression& e .>
+= (. TextPosition pos;
+     pType type;
     .)
-  ArrayExpression<out e>
-  { ":"                     (. x = t; .)
-    (
-       TypeP<out coercedTo>   (. e = Expr.CoerceType(x, e, coercedTo); .)
-    |
-      Nat<out bn>           /* This means that we really look at a bitvector
-                               expression t[a:b] */
-                            (. if (!(e is LiteralExpr) || !((LiteralExpr)e).isBigNum) {
-                                 this.SemErr("arguments of extract need to be integer literals");
-                                 e = new BvBounds(x, bn, BigNum.ZERO);
-                               } else {
-                                 e = new BvBounds(x, bn, ((LiteralExpr)e).asBigNum);
-                               }
-                             .)
-    )
-  }
-  .
+  ArrayExpression<e> 
+  { ":" (. pos = toPos(t); .) TypeP<type> (. e = Expression::makeCast(pos,e,t); .) }
+.
 
 /*------------------------------------------------------------------------*/
-ArrayExpression<. unique_ptr<Expression>& e .>
-= (. Token tok;
-     Expr/*!*/ index0 = dummyExpr; Expr/*!*/ e1;
-     bool store; bool bvExtract;
-     List<Expr>/*!*/ allArgs = dummyExprSeq;
-  .)
-  AtomExpression<e>
+ArrayExpression<. pExpression& e .>
+= AtomExpression<e>
   { ArrayExpressionR<e> }
 .
 
-ArrayExpressionR<. unique_ptr<Expression>& e .>
-=
-  "["        (. x = t; allArgs = new List<Expr> ();
-                  allArgs.Add(e);
-                  store = false; bvExtract = false; .)
-      [
-        Expression<out index0>
-               (. if (index0 is BvBounds)
-                    bvExtract = true;
-                  else
-                    allArgs.Add(index0);
-               .)
-        { "," Expression<out e1>
-               (. if (bvExtract || e1 is BvBounds)
-                    this.SemErr("bitvectors only have one dimension");
-                  allArgs.Add(e1);
-               .)
-        }
-        [ ":=" Expression<out e1>
-               (. if (bvExtract || e1 is BvBounds)
-                    this.SemErr("assignment to bitvectors is not possible");
-                  allArgs.Add(e1); store = true;
-               .)
-        ]
-      | ":=" Expression<out e1>       (. allArgs.Add(e1); store = true; .)
+ArrayExpressionR<. pExpression& e .>
+= "["        (. TextPosition pos = toPos(t); .)
+      [   IF (isBVBound()) BvBoundP<pos,e>
+        | MapReadOrWrite<pos,e> 
       ]
-    "]"
-    (. if (store)
-         e = new NAryExpr(x, new MapStore(x, allArgs.Count - 2), allArgs);
-       else if (bvExtract)
-         e = new BvExtractExpr(x, e,
-                               ((BvBounds)index0).Upper.ToIntSafe,
-                               ((BvBounds)index0).Lower.ToIntSafe);
-       else
-         e = new NAryExpr(x, new MapSelect(x, allArgs.Count - 1), allArgs);
-    .)
-  .
+  "]"
+.
 
+MapReadOrWrite<. TextPosition pos, pExpressions& e .>
+= (. Expressions  args;
+     Operation    op = Operation::MapRead; 
+  .)
+  ( ( ExpressionCS<args> [ MapWrite<op,args> ] )
+    | MapWrite<op,args> 
+  )                                               (. e = Expression::make(pos,op,args); .)
+.
+        
+MapWrite<. Operation& op, Expressions& es .>
+  =  ":=" ExpressionC<args> (. op = Operation::MapWrite; .)
+.
+
+BvBoundP<. TextPosition pos, pExpressions& e .>
+= (. pExpression& l,h; .)
+  NatE<l> ":" NatE<h> (. e = Expression::make(pos, Operation::BVSelect, l, h ); .)
+.
 
 /*------------------------------------------------------------------------*/
-AtomExpression<. unique_ptr<Expression>& e .>
-= 
-( 
-    LiteralExpression<e>
+AtomExpression<. pExpression& e .>
+=   LiteralExpression<e>
   | FAExpression<e>
   | OldExpression<e>
   | CastExpression<e>
   | BinderOrParenExpression<e>
 //  | IfThenElseExpression<e>
   | CodeExpression<e>
-)
 .
 
-LiteralExpression<. unique_ptr<Expression>& e .>
-= 
-    "false"           (. e = new LiteralExpression(toPos(t), false); .)
-  | "true"            (. e = new LiteralExpression(toPos(t), true); .)
+LiteralExpression<. pExpression& e .>
+=   BooleanLiteralExpression<e>
   | NatE<e>
   | Dec<e>            
   | FloatE<e>
   | BvLit<e>
 .
 
-FAExpression<. unique_ptr<Expression>& e .>
-= (. list<Expression> args;
-     unique_ptr<IdentifierExpression> ide;
-     unique_ptr<Identifier> id; 
+BooleanLiteralExpression<. pExpression& e .>
+=   "false"           (. e = new LiteralExpression(toPos(t), false); .)
+  | "true"            (. e = new LiteralExpression(toPos(t), true); .)
+.
+FAExpression<. pExpression& e .>
+= (. Expressions args;
+     pIdentifierExpression ide;
+     pIdentifier id; 
   .)
   IdentifierExpression<ide>    (. id = ide->identifier->clone(); e = move(ide) .)
-    [ "(" Expressions<args> ")"  (. e = new FAExpression(e.pos, new FunctionCall(id), move(args)); .) ]
+    [ "(" ExpressionCS<args> ")"  (. e = new FAExpression(e.pos, new FunctionCall(id), move(args)); .) ]
 .
 
-OldExpression<. unique_ptr<Expression>& e .>
+OldExpression<. pExpression& e .>
 = (.  TextPosition pos; .)
   "old"                    (. pos = toPos(t); .)
     "(" Expression<e> ")"    (. e = new OldExpression(pos, e); .)
 .
 
-BinderOrParenExpression<. unique_ptr<Expression>& e .>
+BinderOrParenExpression<. pExpression& e .>
 = (. TextPosition pos;
      Binder b;
   .)
@@ -1190,7 +1144,7 @@ AttributesAndTriggers<. unique_ptr<Attributes>& attributes, unique_ptr<Triggers>
 
 TriggerI<. Triggers& triggers .> 
 = (. unique_ptr<Trigger> trigger = new Trigger() .)
-    ExpressionsCS<trigger.expressions> (. triggers.push_back(move(trigger)); .)
+    ExpressionCS<trigger.expressions> (. triggers.push_back(move(trigger)); .)
 .
 
 AttributeI<. Attributes& attributes .> 
@@ -1228,12 +1182,12 @@ Identifier<. pIdentifier& id .> =
 .
 
 /*------------------------------------------------------------------------*/
-NatE<. unique_ptr<LiteralExpression>& le .>
-= (. Integer i; Token tok.)
-  Nat<i,t>  (. le = new LiteralExpression(tok,i); .)
+NatE<. pExpression& e .>
+= (. TextPosition pos; Integer n; .)
+  Nat<pos,n>  (. e = make_unique<LiteralExpression>(pos,n); .)
   .
 
-Nat<. Integer& n .>
+Nat<. TextPosition& pos, Integer& n .>
 =
   digits
   (. try {

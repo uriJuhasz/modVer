@@ -24,6 +24,8 @@ namespace ParseTree{
 
     using common::Integer;
     using common::Rational;
+    
+    typedef wstring IDString;
 
     // <editor-fold desc="utilities">
     template<typename T> T cloneC(const T& in){
@@ -65,10 +67,10 @@ namespace ParseTree{
     
     class Identifier : public PTreeNode{
     public:
-        Identifier(TextPosition pos, const common::String& name)
+        Identifier(TextPosition pos, const IDString& name)
         : PTreeNode(pos), name(name){}
         pIdentifier&& clone()const{return move(make_unique<Identifier>(pos,name)); }
-        String name;
+        IDString name;
     };
     // </editor-fold>
     
@@ -499,10 +501,14 @@ namespace ParseTree{
     enum class Binder{ forall, exists, lambda };
     class Operation{
     public:
-        static constexpr Operation Implies;
-        static constexpr Operation Explies;
-        static constexpr Operation And;
-        static constexpr Operation Or;
+        static const Operation Implies;// = Operation("=>");
+        static const Operation Explies;// = Operation("<=");
+        static const Operation And;//     = Operation("&&");
+        static const Operation Or;//      = Operation("||");
+        
+        Operation(const string& name) : name(name){}
+        string name;
+        
     };
     typedef unique_ptr<Operation> pOperation;
     
