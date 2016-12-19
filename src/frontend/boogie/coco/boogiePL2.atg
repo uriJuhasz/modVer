@@ -377,8 +377,8 @@ ScopedBlocksP<. ScopedBlocks& bs .>
 /*------------------------------------------------------------------------*/
 BoundVarsP<. BoundVars& vars .>
 = 
-  AttrsIdsTypes<. [&vars](auto&& attrs, auto&& id, auto& type){ 
-    vars.push_back(make_unique<BoundVariable>(move(attrs),move(id),type->clone())); } .>
+  AttrsIdsTypes<. [&vars](auto&& attrs, auto&& id, auto&& type){ 
+    vars.push_back(make_unique<BoundVariable>(move(attrs),move(id),move(type))); } .>
   .
 
 /*------------------------------------------------------------------------*/
@@ -432,7 +432,7 @@ AttrsIdsTypeWheres<. ActionAITW action .>
 AttrsIdsTypeWhere<. ActionAITW action .>
 = (. Attributes attributes; .)
   AttributesP<attributes>
-  IdsTypeWhere<.[&attributes](auto id, auto type, auto e){action(cloneC(attributes),move(id),move(type),move(e));}.>
+  IdsTypeWhere<.[action,&attributes](auto id, auto type, auto e){action(cloneC(attributes),move(id),move(type),move(e));}.>
 .
 
 AttrsIdsTypes<. ActionAIT action .>
@@ -442,7 +442,7 @@ AttrsIdsTypes<. ActionAIT action .>
 AttrsIdsType<. ActionAIT action .>
 = (. Attributes attributes; .)
   AttributesP<attributes>
-  IdsTypeF<.[&attributes](auto&& id, auto&& type, auto&& e){action(cloneC(attributes),move(id),move(type),move(e));}.>
+  IdsTypeF<.[action,&attributes](auto&& id, auto&& type){action(cloneC(attributes),move(id),move(type));}.>
 .
 
 /*------------------------------------------------------------------------*/
@@ -454,9 +454,9 @@ TypeP<. pType& type .>
 .
 
 TypeAtom<. pType& type .>
-=   "int"              (. type = new BasicType(t, SimpleType.Int); .)
-  | "real"             (. type = new BasicType(t, SimpleType.Real); .)
-  | "bool"             (. type = new BasicType(t, SimpleType.Bool); .)
+=   "int"              (. type = make_unique<IntegerType>(toPos(t)); .)
+  | "real"             (. type = make_unique<RationalType>(toPos(t)); .)
+  | "bool"             (. type = make_unique<BooleanType>(toPos(t)); .)
   | "(" TypeP<type> ")"
  .
 
@@ -464,7 +464,7 @@ TypeConstructor<. pType& type .>
 =(. pIdentifier id;
     Types       args;
  .)
-   IdentifierP<id> [TypeArgs<args>]   (. type = new UnresolvedTypeIdentifier(id, args); .)
+   IdentifierP<id> [TypeArgs<args>]   (. type = make_unique<UnresolvedType>(id->pos,id, args); .)
 .
 
 TypeArgs<. Types types .>
@@ -472,7 +472,7 @@ TypeArgs<. Types types .>
      pType       type;  .)
   (
     ((  TypeAtom<type>    (. types.push_back(move(type)); .)
-      | IdentifierP<id>    (. types.push_back(new UnresolvedTypeIdentifier(id)); .)
+      | IdentifierP<id>    (. types.push_back(new UnresolvedType(id->pos,id,Types())); .)
     )
     [ TypeArgs<ts> ] )
   | MapType<type>      (. types.push_back(move(type)); .)
@@ -487,7 +487,7 @@ MapType<. pType& type .>
      pType result;
    .)
   [ TypeParams<typeParameters> ]
-  "[" (. pos = t .) [ TypesCS<arguments> ] "]"
+  "[" (. pos = toPos(t); .) [ TypesCS<arguments> ] "]"
   TypeP<result>
   (. type = new MapType(pos, typeParameters, arguments, result); .)
 .
@@ -1202,7 +1202,7 @@ Nat<. TextPosition& pos, Integer& n .>
   .
 
 /*------------------------------------------------------------------------*/
-Dec<. pLiteralExpression& le .>
+Dec<. pExpression& le .>
 = (. string s = ""; .)
   (   decimal     (. s = t.val; .)
     | dec_float   (. s = t.val; .)
@@ -1217,7 +1217,7 @@ Dec<. pLiteralExpression& le .>
   .
 
 /*------------------------------------------------------------------------*/
-BvLit<. pLiteralExpression& le .>
+BvLit<. pExpression& le .>
 =
   bvlit
   (.
@@ -1239,7 +1239,7 @@ BvLit<. pLiteralExpression& le .>
   .)
   .
 
-FloatE<. pLiteralExpression& le .> = 
+FloatE<. pExpression& le .> = 
 (. Rational r; TextPosition pos .)
 Float<r> (. return new LiteralExpression(pos,r); .)
 .

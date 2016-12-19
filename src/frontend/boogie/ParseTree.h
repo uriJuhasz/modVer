@@ -87,13 +87,14 @@ namespace ParseTree{
     typedef vector<pType> Types;
     class Type : public PTreeNode{
     public:
+        Type(TextPosition pos) : PTreeNode(pos){}
         virtual pType clone() const = 0;
-        virtual ~Type() = 0;
     };
 
     class TypeVariable : public PTreeNode{
     public:
         TypeVariable(pIdentifier&& id) : id(move(id)){}
+        virtual unique_ptr<TypeVariable> clone() const {return make_unique<TypeVariable>(id->clone()); }
         pIdentifier id;
     };
     typedef unique_ptr<TypeVariable> pTypeVariable;
@@ -101,8 +102,8 @@ namespace ParseTree{
     
     class TypeConstructorInstance : public Type{
     public:
-        TypeConstructorInstance(pIdentifier&& id, list<pType>&& arguments)
-            : id(move(id)), arguments(move(arguments))
+        TypeConstructorInstance(TextPosition pos, pIdentifier&& id, list<pType>&& arguments)
+            : Type(pos), id(move(id)), arguments(move(arguments))
         {}
             
         pIdentifier id;
@@ -110,8 +111,8 @@ namespace ParseTree{
     };
     class MapType : public Type{
     public:
-        MapType(TypeParameters&& typeParameters, vector<pType>&& argumentTypes, pType&& resultType)
-                : typeParameters(move(typeParameters)), argumentTypes(move(argumentTypes)), resultType(move(resultType))
+        MapType(TextPosition pos, TypeParameters&& typeParameters, vector<pType>&& argumentTypes, pType&& resultType)
+                : Type(pos), typeParameters(move(typeParameters)), argumentTypes(move(argumentTypes)), resultType(move(resultType))
         {}
         TypeParameters typeParameters;
         vector<pType> argumentTypes;
@@ -119,9 +120,17 @@ namespace ParseTree{
     };
     class VariableType : public Type{
     public:
-        VariableType(pTypeVariable&& var)
-            : var(move(var)){}
+        VariableType(TextPosition pos, pTypeVariable&& var)
+            : Type(pos), var(move(var)){}
         pTypeVariable var;
+    };
+
+    class UnresolvedType : public Type{
+    public:
+        UnresolvedType(TextPosition pos, pIdentifier&& id, Types&& args)
+            : Type(pos), id(move(id)), args(move(args)){}
+        pIdentifier id;
+        Types args;
     };
 
     class TypeDef  : public PTreeNode{
@@ -144,6 +153,22 @@ namespace ParseTree{
         TypeSynonymDef(pIdentifier&& id, TypeParameters&& parameters, pType&& target)
             : TypeDef(move(id),move(parameters)), target(move(target)){}
         pType target;
+    };
+    
+    class IntegerType : public Type{
+    public:
+        IntegerType(TextPosition pos) : Type(pos){};
+        virtual pType clone() const override{ return make_unique<IntegerType>(pos); }
+    };
+    class RationalType : public Type{
+    public:
+        RationalType(TextPosition pos) : Type(pos){};
+        virtual pType clone() const override{ return make_unique<RationalType>(pos); }
+    };
+    class BooleanType : public Type{
+    public:
+        BooleanType(TextPosition pos) : Type(pos){};
+        virtual pType clone() const override{ return make_unique<BooleanType>(pos); }
     };
     // </editor-fold>
 
@@ -206,6 +231,7 @@ namespace ParseTree{
         {}
         bool isUnique;
         pConstantOrderSpec orderSpec;
+//        virtual unique_ptr<Constant> clone() const override{return make_unique<BoundVariable>(cloneC(attributes), id->clone(), type->clone()); }
     };
     class ConstantParentSpec: public PTreeNode {
     public:
@@ -240,6 +266,8 @@ namespace ParseTree{
                    Variable::GLOBAL),
                    we(move(we))
         {}
+        virtual unique_ptr<GlobalVariable> clone() const {return 
+            make_unique<GlobalVariable>(pos,cloneC(attributes), id->clone(), type->clone(),we->clone()); }
         pExpression we;
     };
     
@@ -258,6 +286,7 @@ namespace ParseTree{
                    move(type),
                    Variable::BOUND)
         {}
+        virtual unique_ptr<BoundVariable> clone() const {return make_unique<BoundVariable>(cloneC(attributes), id->clone(), type->clone()); }
     };
     class LocalVariable : public Variable{
     public:
@@ -272,6 +301,7 @@ namespace ParseTree{
                    move(type),
                    0)
         {}
+        virtual unique_ptr<LocalVariable> clone() const {return make_unique<LocalVariable>(cloneC(attributes), id->clone(), type->clone()); }
     };
     enum class FormalDir{ In, Out };
     
@@ -509,18 +539,21 @@ namespace ParseTree{
     };
     typedef unique_ptr<Expression> pExpression;
 
+    class Expression;
+    typedef unique_ptr<Expression> pExpression;
     class Expression : public WExpression{
     public:
         virtual ~Expression() = 0;
+        virtual pExpression clone() const = 0;
 //        static void make(const TextPosition& pos, const Operation op, std::initializer_list<unique_ptr<Expression>>);
     protected:
         Expression(TextPosition pos) : WExpression(pos) {}
     };
-    typedef unique_ptr<Expression> pExpression;
     
     class VariableExpression : public Expression{
     public:
         VariableExpression(pIdentifier&& id) : Expression(id->pos), id(move(id)) {}
+        virtual pExpression clone() const override{ return make_unique<VariableExpression>(id->clone()); }
         pIdentifier id;
     };
     typedef unique_ptr<VariableExpression> pVariableExpression;
@@ -529,6 +562,7 @@ namespace ParseTree{
     class Operator : public PTreeNode{
     public:
         virtual ~Operator() = 0;
+        virtual unique_ptr<Operator> clone() const = 0;        
     protected:
         Operator(TextPosition pos) : PTreeNode(pos){}
     };
@@ -537,6 +571,7 @@ namespace ParseTree{
     class OpC  : public Operator{
     public: 
         OpC(TextPosition pos,const wstring& name) : Operator(pos),name(name){}
+        unique_ptr<Operator> clone() const override{ return make_unique<OpC>(pos,name); }
         static pOperator implies(TextPosition pos){return make_unique<OpC>(pos,"=>");}
         static pOperator explies(TextPosition pos){return make_unique<OpC>(pos,"<=");}
 
@@ -560,22 +595,28 @@ namespace ParseTree{
     };
     
     
-    class UserDefineOp  : public Operator{
+    class UserDefinedOp  : public Operator{
     public:
-        UserDefineOp(pIdentifier&& id) : Operator(id->pos), id(move(id)){}
+        UserDefinedOp(pIdentifier&& id) : Operator(id->pos), id(move(id)){}
+        unique_ptr<Operator> clone() const override{ return make_unique<UserDefinedOp>(id->clone()); }
         pIdentifier id;
     };
     class CastOp  : public Operator{
     public:
         CastOp(pType&& type) : Operator(type->pos), type(move(type)){}
+        unique_ptr<Operator> clone() const override{ return make_unique<CastOp>(type->clone()); }
         pType type;
     };
 
     
+    class FAExpression;
+    typedef unique_ptr<FAExpression> pFAExpression;
     class FAExpression : public Expression{
     public:
         FAExpression(pOperator&& op, Expressions&& args)
             : Expression(op->pos), op(move(op)), args(move(args)){}
+        virtual pExpression clone() const override{ return make_unique<FAExpression>(op->clone(),cloneC(args)); }
+
         pOperator op;
         vector<pExpression> args;
         
@@ -588,6 +629,8 @@ namespace ParseTree{
     public:
         QExpression(TextPosition pos, Binder binder, TypeParameters&& tVars, vector<pBoundVariable>&& vars, pExpression e)
             : Expression(pos), binder(binder), tVars(move(tVars)), vars(move(vars)), e(move(e)) {}
+        virtual pExpression clone() const override{ return make_unique<QExpression>(pos,binder, cloneC(tVars), cloneC(vars), e->clone()); }
+
         Binder binder;
         TypeParameters tVars;
         vector<pBoundVariable> vars;
