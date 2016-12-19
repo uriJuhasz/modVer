@@ -226,16 +226,16 @@ namespace ParseTree{
                  Attributes&&  attributes,
                  pIdentifier&& id,
                  pType&&       type,
-                 pExpression&& whereClause)
+                 pExpression&& we)
                 : Variable(
                    pos,
                    move(attributes),
                    move(id),
                    move(type),
                    Variable::GLOBAL),
-                  whereClause(move(whereClause))
+                   we(move(we))
         {}
-        pExpression whereClause;
+        pExpression we;
     };
     
     class BoundVariable;
@@ -243,15 +243,15 @@ namespace ParseTree{
     typedef vector<pBoundVar> BoundVars;
     class BoundVariable : public Variable{
     public:
-        BoundVariable(const TextPosition& _textPos,
-                 Attributes&&  _attributes,
-                 pIdentifier&& _id,
-                 pType&&       _type)
+        BoundVariable(const TextPosition& pos,
+                 Attributes&&  attributes,
+                 pIdentifier&& id,
+                 pType&&       type)
                 : Variable(
-                   _textPos,
-                   move(_attributes),
-                   move(_id),
-                   move(_type),
+                   pos,
+                   move(attributes),
+                   move(id),
+                   move(type),
                    Variable::BOUND)
         {}
     };
@@ -276,14 +276,17 @@ namespace ParseTree{
         Formal(  Attributes&&        attributes,
                  pIdentifier&&       id,
                  pType&&             type,
+                 pExpression&&       we,
                  FormalDir           dir)
                 : Variable(
                    id->pos,
                    move(attributes),
                    move(id),
                    move(type),
-                    (dir == FormalDir::In ? Variable::INPUT : Variable::OUTPUT))
+                    (dir == FormalDir::In ? Variable::INPUT : Variable::OUTPUT)),
+                    we(move(we))
         {}
+        pExpression we;
     };
     
     typedef unique_ptr<GlobalVariable> pGlobalVariable;
@@ -360,6 +363,14 @@ namespace ParseTree{
         Formals        formals;
     };
     
+    class Modifies : public PTreeNode{
+    public:
+        Modifies(bool free, pIdentifier&& id) : id(move(id)), free(free){}
+        pIdentifier id;
+        bool free;
+    };
+    typedef unique_ptr<Modifies> pModifies;
+    
     class ProcSpec;
     typedef unique_ptr<ProcSpec> pProcSpec;
     class ProcSpec : public PTreeNode{
@@ -367,7 +378,7 @@ namespace ParseTree{
         ProcSpec(){}
         pProcSpec clone() const;
 
-        vector<pVariableExpression> modifies;
+        vector<pModifies> modifies;
         SpecExpressions preconditions;
         SpecExpressions postconditions;
     };
@@ -499,24 +510,54 @@ namespace ParseTree{
     typedef unique_ptr<VariableExpression> pVariableExpression;
     
     enum class Binder{ forall, exists, lambda };
-    class Operation{
+    class Operator : public PTreeNode{
     public:
-        static const Operation Implies;// = Operation("=>");
-        static const Operation Explies;// = Operation("<=");
-        static const Operation And;//     = Operation("&&");
-        static const Operation Or;//      = Operation("||");
-        
-        Operation(const string& name) : name(name){}
-        string name;
-        
+        virtual ~Operator() = 0;
+    protected:
+        Operator(TextPosition pos) : PTreeNode(pos){}
     };
-    typedef unique_ptr<Operation> pOperation;
+    typedef unique_ptr<Operator> pOperator;
+    
+    class OpC  : public Operator{
+    public: 
+        OpC(TextPosition pos,const wstring& name) : Operator(pos),name(name){}
+        static pOperator implies(TextPosition pos){return make_unique<OpC>(pos,"=>");}
+        static pOperator explies(TextPosition pos){return make_unique<OpC>(pos,"<=");}
+
+        static pOperator equiv(TextPosition pos){return make_unique<OpC>(pos,"<=>");}
+        static pOperator andOp(TextPosition pos){return make_unique<OpC>(pos,"&&");}
+        static pOperator orOp(TextPosition pos){return make_unique<OpC>(pos,"||");}
+        static pOperator notOp(TextPosition pos){return make_unique<OpC>(pos,"!");}
+        
+        static pOperator minus(TextPosition pos){return make_unique<OpC>(pos,"-");}
+        static pOperator add(TextPosition pos){return make_unique<OpC>(pos,"+");}
+        static pOperator sub(TextPosition pos){return make_unique<OpC>(pos,"-");}
+        static pOperator mul(TextPosition pos){return make_unique<OpC>(pos,"mul");}
+        static pOperator div(TextPosition pos){return make_unique<OpC>(pos,"div");}
+        static pOperator mod(TextPosition pos){return make_unique<OpC>(pos,"%");}
+        static pOperator divR(TextPosition pos){return make_unique<OpC>(pos,"/");}
+        
+        wstring name;
+    };
+    
+    
+    class UserDefineOp  : public Operator{
+    public:
+        UserDefineOp(pIdentifier&& id) : Operator(id->pos), id(move(id)){}
+        pIdentifier id;
+    };
+    class CastOp  : public Operator{
+    public:
+        CastOp(pType&& type) : Operator(type->pos), type(move(type)){}
+        pType type;
+    };
+
     
     class FAExpression : public Expression{
     public:
-        FAExpression(pOperation&& op, vector<pExpression>&& args)
+        FAExpression(pOperator&& op, vector<pExpression>&& args)
             : op(move(op)), args(move(args)){}
-        pOperation op;
+        pOperator op;
         vector<pExpression> args;
     };
     class QExpression : public Expression{
