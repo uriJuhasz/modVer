@@ -248,12 +248,11 @@ namespace ParseTree{
     typedef vector<pBoundVar> BoundVars;
     class BoundVariable : public Variable{
     public:
-        BoundVariable(const TextPosition& pos,
-                 Attributes&&  attributes,
+        BoundVariable(Attributes&&  attributes,
                  pIdentifier&& id,
                  pType&&       type)
                 : Variable(
-                   pos,
+                   id->pos,
                    move(attributes),
                    move(id),
                    move(type),
@@ -371,7 +370,7 @@ namespace ParseTree{
     
     class Modifies : public PTreeNode{
     public:
-        Modifies(bool free, pIdentifier&& id) : id(move(id)), free(free){}
+        Modifies(TextPosition pos, bool free, pIdentifier&& id) : PTreeNode(pos), id(move(id)), free(free){}
         pIdentifier id;
         bool free;
     };
@@ -553,7 +552,10 @@ namespace ParseTree{
         static pOperator div(TextPosition pos){return make_unique<OpC>(pos,"div");}
         static pOperator mod(TextPosition pos){return make_unique<OpC>(pos,"%");}
         static pOperator divR(TextPosition pos){return make_unique<OpC>(pos,"/");}
+        static pOperator pow(TextPosition pos){return make_unique<OpC>(pos,"pow");}
         
+        static pOperator bvSelect(TextPosition pos){return make_unique<OpC>(pos,"[:]");}
+
         wstring name;
     };
     
@@ -572,10 +574,15 @@ namespace ParseTree{
     
     class FAExpression : public Expression{
     public:
-        FAExpression(pOperator&& op, vector<pExpression>&& args)
+        FAExpression(pOperator&& op, Expressions&& args)
             : Expression(op->pos), op(move(op)), args(move(args)){}
         pOperator op;
         vector<pExpression> args;
+        
+//        static unique_ptr<FAExpression> make(pOperator&& op){return make_unique<FAExpression>(op, Expressions());}
+        static unique_ptr<FAExpression> make(pOperator&& op,std::initializer_list<pExpression> args){
+            return make_unique<FAExpression>(op, Expressions(move(args)));}
+            
     };
     class QExpression : public Expression{
     public:
@@ -595,6 +602,8 @@ namespace ParseTree{
     protected:
         LiteralExpression(TextPosition pos) : Expression(pos){}
     };
+    typedef unique_ptr<LiteralExpression> pLiteralExpression;
+    
     template<class T>class LiteralExpressionC : public LiteralExpression{
     public:
         LiteralExpressionC(TextPosition pos, T&& val) : LiteralExpression(pos), val(move(val)){}
@@ -668,7 +677,7 @@ namespace ParseTree{
     typedef unique_ptr<SimpleBlock> pSimpleBlock;
     typedef vector<pSimpleBlock> SimpleBlockSeq;
     
-    typedef vector<LocalVariable> Locals;
+    typedef vector<pLocalVariable> Locals;
     class ScopedSimpleBlocks : public PTreeNode{
         Locals locals;
         SimpleBlockSeq blocks;

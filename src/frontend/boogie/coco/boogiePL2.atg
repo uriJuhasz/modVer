@@ -35,12 +35,10 @@ static wstring toIdentifier(const wstring& s){
 }
 
 bool isLabel() {
-  Token* t = la;
   return (la->kind == _ident && scanner->Peek()->kind == _colon );
 } 
 
 bool isIdColon() {
-  Token* t = la;
   return (la->kind == _ident && scanner->Peek()->kind == _colon );
 } 
 
@@ -56,14 +54,15 @@ bool isBVBound() {
 
 bool isUnaryITEExpression() {
   auto t = la;
-  while (t->kind=_neg || t->kind==_minus)
+  while (t->kind==_neg || t->kind==_minus)
     t=scanner->Peek();
-  return t->kind=_ifKW;
+  return t->kind==_ifKW;
 }
 
-typedef function< void(Attributes&&, pIdentifier&&, const Type&, pExpression&&) > ActionAITW;
-typedef function< void(              pIdentifier&&, const Type&, pExpression&&) > ActionITW;
-typedef function< void(              pIdentifier&&, const Type&               ) > ActionIT;
+typedef function< void(Attributes&&, pIdentifier&&, pType&&, pExpression&&) > ActionAITW;
+typedef function< void(              pIdentifier&&, pType&&, pExpression&&) > ActionITW;
+typedef function< void(              pIdentifier&&, pType&&               ) > ActionIT;
+typedef function< void(Attributes&&, pIdentifier&&, pType&&               ) > ActionAIT;
 
 /*--------------------------------------------------------------------------*/
 CHARACTERS
@@ -205,10 +204,9 @@ GlobalVarDefs<. Scope& scope .>
      Attributes attributes; .)
   "var"                                     (. pos = toPos(t); .)
   AttributesP<attributes>
-  IdsTypeWheres<. [&attributes,&scope]
-    (pIdentifier&& id, const Type& type, pExpression&& e){
+  IdsTypeWheres<. [&attributes,&scope](auto&& id, auto&& type, auto&& e){
         scope.addVariableDef( make_unique<GlobalVariable>(
-            id->pos, cloneC(attributes), move(id), type.clone(), move(e) )); } .> 
+            id->pos, cloneC(attributes), move(id), move(type), move(e) )); } .> 
   ";"
   .
 
@@ -302,7 +300,7 @@ ProcSignature<. pProcSignature& sig .>
 
 ProcFormals<. FormalDir dir, Formals& formals .>
 = "("
-  [ AttrsIdsTypeWheres<. [dir,&formals](Attributes&& attrs, pIdentifier&& id, const Type& type, pExpression&& e)    //(auto attrs,auto id, auto type, auto e)
+  [ AttrsIdsTypeWheres<. [dir,&formals](auto&& attrs, auto&& id, auto&& type, auto&& e)
       {formals.push_back(make_unique<Formal>(move(attrs),move(id),move(type),move(e),dir));} .> ]
   ")"
 .
@@ -310,14 +308,14 @@ ProcFormals<. FormalDir dir, Formals& formals .>
 ProcSpecP<. ProcSpec& spec .>
 = (. bool _free; .)
   ["free"                   (. _free=true; .)        ]
-  (  Modifies<_free,spec>
+  (  ModifiesP<_free,spec>
   | SpecPrePost<_free,spec> )
 .
 
-Modifies<. bool _free, ProcSpec& spec .>
-= (. Identifiers ids; .)
-  "modifies"
-    [ IdentifiersCS<ids>  (. for (auto& id : ids) spec.modifies.push_back(make_unique<Modifies>(_free, move(id))); .) ]
+ModifiesP<. bool _free, ProcSpec& spec .>
+= (. TextPosition pos; Identifiers ids; .)
+  "modifies" (. pos = toPos(t); .)
+    [ IdentifiersCS<ids>  (. for (auto& id : ids) spec.modifies.push_back(make_unique<Modifies>(pos,_free, move(id))); .) ]
     ";"
 .
 
@@ -358,7 +356,7 @@ ImplSignature<. pProcSignature& sig .>
 
 ImplFormals<. FormalDir dir, Formals& formals .>
 = "("
-  [ IdsTypeS<. [dir,&formals](auto id, auto type)
+  [ IdsTypeS<. [dir,&formals](auto&& id, auto&& type)
       {formals.push_back(make_unique<Formal>(move(id),move(type),dir));} .> ]
   ")"
 .
@@ -378,12 +376,9 @@ ScopedBlocksP<. ScopedBlocks& bs .>
 
 /*------------------------------------------------------------------------*/
 BoundVarsP<. BoundVars& vars .>
-= (.
-    List<TypedIdent>/*!*/ tyds = new List<TypedIdent>();
-    ds = new List<Variable>();
-    var dsx = ds;
-  .)
-  AttrsIdsTypeWheres<true, false, "bound variables", delegate(TypedIdent tyd, QKeyValue kv) { dsx.Add(new BoundVariable(tyd.tok, tyd, kv)); } >
+= 
+  AttrsIdsTypes<. [&vars](auto&& attrs, auto&& id, auto& type){ 
+    vars.push_back(make_unique<BoundVariable>(move(attrs),move(id),type->clone())); } .>
   .
 
 /*------------------------------------------------------------------------*/
@@ -391,8 +386,8 @@ LocalVar<. Locals& locals .>
 = (. Attributes attributes; .)
   "var"
   AttributesP<attributes>
-  IdsTypeWheres<. [&attributes,&locals](auto id, auto type, auto e){ 
-    locals.push_back(make_unique<LocalVariable>( cloneC(attributes), move(id), type.clone() )) } .> 
+  IdsTypeWheres<. [&attributes,&locals](auto&& id, auto&& type, auto&& e){ 
+    locals.push_back(make_unique<LocalVariable>( cloneC(attributes), move(id), move(type) )); } .> 
   ";"
   .
 
@@ -438,6 +433,16 @@ AttrsIdsTypeWhere<. ActionAITW action .>
 = (. Attributes attributes; .)
   AttributesP<attributes>
   IdsTypeWhere<.[&attributes](auto id, auto type, auto e){action(cloneC(attributes),move(id),move(type),move(e));}.>
+.
+
+AttrsIdsTypes<. ActionAIT action .>
+= AttrsIdsType<action> { "," AttrsIdsType<action> }
+.
+
+AttrsIdsType<. ActionAIT action .>
+= (. Attributes attributes; .)
+  AttributesP<attributes>
+  IdsTypeF<.[&attributes](auto&& id, auto&& type, auto&& e){action(cloneC(attributes),move(id),move(type),move(e));}.>
 .
 
 /*------------------------------------------------------------------------*/
@@ -876,7 +881,7 @@ RelationalExpression<. pExpression& e0 .>
   [ RelOp<pos,op> BvTerm<e1>            (. e0 = Expression::make(pos,op,e0,e1); .)  ]
 .
 
-RelOp<. TextPosition& pos, pOperation& op .>
+RelOp<. TextPosition& pos, pOperator& op .>
 =                  
   ( "=="               (. op = Operation::Eq; .)
   | "<"                (. op = Operation::LT; .)
@@ -907,7 +912,7 @@ Term<. pExpression& e0 .>
   }
 .
 
-AddOp<. TextPosition& pos, pOperation& op .>
+AddOp<. TextPosition& pos, pOperator& op .>
 =                  
   ( "+"            (. op = Operation::Add; .)
   | "-"            (. op = Operation::Sub; .)
@@ -916,48 +921,47 @@ AddOp<. TextPosition& pos, pOperation& op .>
 
 /*------------------------------------------------------------------------*/
 Factor<. pExpression& e0 .>
-= (. TextPosition pos; Operation op; pExpression e1; .)
+= (. pOperator op; pExpression e1; .)
   Power<e0>
-  { MulOp<pos, op> Power<e1> (. e0 = Expr.Binary(x, op, e0, e1); .) }
+  { MulOp<op> Power<e1> (. e0 = Expr.Binary(x, op, e0, e1); .) }
 .
 
-MulOp<. TextPosition& pos, Operation& op .>
+MulOp<. pOperator& op .>
 =                  
-  ( "*"            (. op = Operation::Mul; .)
-  | "div"          (. op = Operation::Div; .)
-  | "mod"          (. op = Operation::Mod; .)
-  | "/"            (. op = Operation::DivR; .)
-  )                (. pos = toPos(t) .)
+    "*"            (. op = OpC::mul(toPos(t)); .)
+  | "div"          (. op = OpC::div(toPos(t)); .)
+  | "mod"          (. op = OpC::mod(toPos(t)); .)
+  | "/"            (. op = OpC::divR(toPos(t)); .)
 .
 
 /*------------------------------------------------------------------------*/
 Power<. pExpression& e0 .>
-=  (. TextPosition pos; pExpression e1; .)
+=  (. pOperator op; pExpression e1; .)
   UnaryExpression<e0>
   [ /* recurse because exponentation is right-associative */
-    "**"           (. pos = toPos(t); .)
+    "**"           (. op = OpC::pow(toPos(t)); .)
     Power<e1>      (. e0 = Expression::make(pos, Operation::Pow, e0, e1); .)
   ]
   .
 
 /*------------------------------------------------------------------------*/
 UnaryExpression<. pExpression& e .>
-= (. TextPosition pos; Operation op; .)
-    UnaryOp<pos,op> UnaryExpression<e>  (. e = Expression.make(pos,op,e); .)
+= (. TextPosition pos; pOperator op; .)
+    UnaryOp<op> UnaryExpression<e>  (. e = FAExpression::make(op,{e}); .)
   | CoercionExpression<e>
 .
 
 UnaryITEExpression<. pExpression& e .>
-= (. TextPosition pos; Operation op; .)
-    UnaryOp<pos,op> UnaryITEExpression<e>  (. e = Expression.make(pos,op,e); .)
+= (. TextPosition pos; pOperator op; .)
+    UnaryOp<pos,op> UnaryITEExpression<e>  (. e = FAExpression::make(op,{e}); .)
   | IfThenElseExpression<e>
 .
 
-UnaryOp<. TextPosition& pos, Operation& op .>
+UnaryOp<. pOperator& op .>
 =                  
-  ( "-"                (. op = Operation::Minus; .)
-  | ( "!" | '\u00ac' ) (. op = Operation::Negate; .)
-  )                    (. pos = toPos(t) .)
+  ( "-"                (. op = OpC::minus(toPos(t)); .)
+  | ( "!" | '\u00ac' ) (. op = OpC::neg  (toPos(t)); .)
+  )                    
 .
 
 /*------------------------------------------------------------------------*/
@@ -991,22 +995,23 @@ ArrayExpressionR<. pExpression& e .>
   "]"
 .
 
-MapReadOrWrite<. TextPosition pos, pExpressions& e .>
+MapReadOrWrite<. TextPosition pos, pExpression& e .>
 = (. Expressions  args;
-     Operation    op = Operation::MapRead; 
+     pOperator    op = OpC::mapRead(pos); 
   .)
-  ( ( ExpressionCS<args> [ MapWrite<op,args> ] )
-    | MapWrite<op,args> 
-  )                                               (. e = Expression::make(pos,op,args); .)
+  ( ( ExpressionCS<args> [ MapWrite<pos,op,args> ] )
+    | MapWrite<pos,op,args> 
+  )                                                  (. e = Expression::make(op,args); .)
 .
         
-MapWrite<. Operation& op, Expressions& es .>
-  =  ":=" ExpressionC<args> (. op = Operation::MapWrite; .)
+MapWrite<. TextPosition pos, pOperator& op, Expressions& es .>
+  =  ":="                  (. op = OpC::mapWrite(pos); .)  
+      ExpressionC<args> 
 .
 
-BvBoundP<. TextPosition pos, pExpressions& e .>
+BvBoundP<. TextPosition pos, pExpression& e .>
 = (. pExpression& l,h; .)
-  NatE<l> ":" NatE<h> (. e = Expression::make(pos, Operation::BVSelect, l, h ); .)
+  NatE<l> ":" NatE<h> (. e = FAExpression::make(OpC::bvSelect(pos), l, h ); .)
 .
 
 /*------------------------------------------------------------------------*/
@@ -1053,11 +1058,11 @@ BinderOrParenExpression<. pExpression& e .>
   .)
   "(" 
         Expression<e>                 (. if (e is BvBounds) this.SemErr("parentheses around bitvector bounds are not allowed"); .)
-      | ( Binder<pos,binder> QuantifierBody<pos,binder,e> )
+      | ( BinderP<pos,binder> QuantifierBody<pos,binder,e> )
    ")"
 .
 
-Binder<. TextPosition& pos, Binder& binder .>
+BinderP<. TextPosition& pos, Binder& binder .>
 =
       Forall                            (. binder = Binder::forall; .)
     | Exists                            (. binder = Binder::exists; .)
