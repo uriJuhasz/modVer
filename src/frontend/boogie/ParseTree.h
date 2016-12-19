@@ -56,6 +56,11 @@ namespace ParseTree{
     
     class Expression;
     typedef unique_ptr<Expression> pExpression;
+    typedef vector<pExpression> Expressions;
+    class WildCardExpression;
+    typedef unique_ptr<WildCardExpression> pWCExpression;
+    class WExpression;
+    typedef unique_ptr<WExpression> pWExpression;
     // </editor-fold>
     
     // <editor-fold desc="Identifiers">
@@ -344,10 +349,11 @@ namespace ParseTree{
     typedef unique_ptr<VariableExpression> pVariableExpression;
     class SpecExpression : public PTreeNode{
     public:
-        SpecExpression(const TextPosition& pos, pExpression&& e, bool isFree)
-            : PTreeNode(pos), e(move(e)), isFree(isFree){}
+        SpecExpression(const TextPosition& pos, pExpression&& e, bool isFree, Attributes attributes = Attributes())
+            : PTreeNode(pos), e(move(e)), isFree(isFree), attributes(attributes) {}
         pExpression e;
         bool isFree;
+        Attributes attributes;
     };
     
     typedef vector<pFormal> Formals;
@@ -492,19 +498,30 @@ namespace ParseTree{
     // </editor-fold>
 
     // <editor-fold desc="Expressions">
-    class WExpression : public PTreeNode{};
+    class WExpression : public PTreeNode{
+    public:
+        WExpression(TextPosition pos) : PTreeNode(pos) {}
+    };
     typedef unique_ptr<WExpression> pWExpression;
     
+    class WildCardExpression : public WExpression{
+    public:
+        WildCardExpression(TextPosition pos) : WExpression(pos) {}
+    };
+    typedef unique_ptr<Expression> pExpression;
+
     class Expression : public WExpression{
     public:
         virtual ~Expression() = 0;
 //        static void make(const TextPosition& pos, const Operation op, std::initializer_list<unique_ptr<Expression>>);
+    protected:
+        Expression(TextPosition pos) : WExpression(pos) {}
     };
     typedef unique_ptr<Expression> pExpression;
     
     class VariableExpression : public Expression{
     public:
-        VariableExpression(pIdentifier&& id) : id(move(id)) {}
+        VariableExpression(pIdentifier&& id) : Expression(id->pos), id(move(id)) {}
         pIdentifier id;
     };
     typedef unique_ptr<VariableExpression> pVariableExpression;
@@ -556,14 +573,14 @@ namespace ParseTree{
     class FAExpression : public Expression{
     public:
         FAExpression(pOperator&& op, vector<pExpression>&& args)
-            : op(move(op)), args(move(args)){}
+            : Expression(op->pos), op(move(op)), args(move(args)){}
         pOperator op;
         vector<pExpression> args;
     };
     class QExpression : public Expression{
     public:
-        QExpression(Binder binder, TypeParameters&& tVars, vector<pBoundVariable>&& vars, pExpression e)
-            : binder(binder), tVars(move(tVars)), vars(move(vars)), e(move(e)) {}
+        QExpression(TextPosition pos, Binder binder, TypeParameters&& tVars, vector<pBoundVariable>&& vars, pExpression e)
+            : Expression(pos), binder(binder), tVars(move(tVars)), vars(move(vars)), e(move(e)) {}
         Binder binder;
         TypeParameters tVars;
         vector<pBoundVariable> vars;
@@ -571,13 +588,16 @@ namespace ParseTree{
     };
     class OldExpression : public Expression{
     public:
-        OldExpression(pExpression&& e) : e(move(e)){}
+        OldExpression(TextPosition pos, pExpression&& e) : Expression(pos), e(move(e)){}
         pExpression e;
     };
-    class LiteralExpression : public Expression{};
+    class LiteralExpression : public Expression{
+    protected:
+        LiteralExpression(TextPosition pos) : Expression(pos){}
+    };
     template<class T>class LiteralExpressionC : public LiteralExpression{
     public:
-        LiteralExpressionC(T&& val) : val(move(val)){}
+        LiteralExpressionC(TextPosition pos, T&& val) : LiteralExpression(pos), val(move(val)){}
         T val;
     };
     
@@ -613,17 +633,17 @@ namespace ParseTree{
     typedef unique_ptr<ScopedSimpleBlocks> pScopedSimpleBlocks;
     class CodeExpression : public Expression{
     public:
-        CodeExpression(pScopedSimpleBlocks&& ss) : ss(move(ss)){}
+        CodeExpression(TextPosition pos, pScopedSimpleBlocks&& ss) : Expression(pos), ss(move(ss)){}
         pScopedSimpleBlocks ss;
     };
     // </editor-fold>
 
     // <editor-fold desc="Statements">
-    class Statement : public PTreeNode{};
-    class SimpleStatement : public Statement{};
-    class ComplexStatement : public Statement{};
-    class ControlStatement : public ComplexStatement{};
-    class CompoundStatement : public ComplexStatement{};
+    class Statement : public PTreeNode{public:Statement(TextPosition pos) : PTreeNode(pos){}};
+    class SimpleStatement : public Statement{public:SimpleStatement(TextPosition pos) : Statement(pos){}};
+    class ComplexStatement : public Statement{public:ComplexStatement(TextPosition pos) : Statement(pos){}};
+    class ControlStatement : public ComplexStatement{public:ControlStatement(TextPosition pos) : ComplexStatement(pos){}};
+    class CompoundStatement : public ComplexStatement{public:CompoundStatement(TextPosition pos) : ComplexStatement(pos){}};
     
     typedef unique_ptr<Statement> pStatement;
     typedef vector<pStatement> StatementSeq;
@@ -631,6 +651,8 @@ namespace ParseTree{
     typedef unique_ptr<SimpleStatement> pSimpleStatement;
     typedef vector<pSimpleStatement> SimpleStatementSeq;
     
+    typedef unique_ptr<ControlStatement> pControlStatement;
+
     typedef unique_ptr<ComplexStatement> pComplexStatement;
     
     class Label;
@@ -657,6 +679,8 @@ namespace ParseTree{
     public:
         Block(Labels&& labels, SimpleStatementSeq&& statements, pComplexStatement&& endStatement)
             : labels(move(labels)), statements(move(statements)), endStatement(move(endStatement)){}
+        Block(pComplexStatement&& endStatement)
+            : endStatement(move(endStatement)){}
         Labels labels;
         SimpleStatementSeq statements;
         pComplexStatement endStatement;
@@ -682,20 +706,20 @@ namespace ParseTree{
     public:
         pExpression e;
     protected:
-        PredicateStatement(pExpression&& e) : e(move(e)){}
+        PredicateStatement(TextPosition pos,pExpression&& e) : SimpleStatement(pos), e(move(e)){}
     };
     class AssertStatement : public PredicateStatement{
     public:
-        AssertStatement(pExpression&& e) : PredicateStatement(move(e)) {}
+        AssertStatement(TextPosition pos, pExpression&& e) : PredicateStatement(pos,move(e)) {}
     };
     class AssumeStatement : public PredicateStatement{
     public:
-        AssumeStatement(pExpression&& e) : PredicateStatement(move(e)) {}
+        AssumeStatement(TextPosition pos, pExpression&& e) : PredicateStatement(pos,move(e)) {}
     };
     
     class HavocStatement : public SimpleStatement{
     public:
-        HavocStatement(list<pVariable>&& vars) : vars(move(vars)) {}
+        HavocStatement(TextPosition pos, list<pVariable>&& vars) : SimpleStatement(pos), vars(move(vars)) {}
         list<pVariable> vars;
     };
 
@@ -720,16 +744,16 @@ namespace ParseTree{
     typedef unique_ptr<AssignLHS> pAssignLHS;
     class AssignStatement : public SimpleStatement{
     public:
-        AssignStatement(vector<pAssignLHS>&& lhss, vector<pExpression>&& rhss) 
-            : lhss(move(lhss)), rhss(move(rhss)) {}
+        AssignStatement(TextPosition pos, vector<pAssignLHS>&& lhss, vector<pExpression>&& rhss) 
+             : SimpleStatement(pos), lhss(move(lhss)), rhss(move(rhss)) {}
         vector<pAssignLHS> lhss;
         vector<pExpression> rhss;
     };
 
     class CallStatement : public SimpleStatement{
     public:
-        CallStatement(vector<pAssignLHS>&& lhss, pIdentifier&& procId, vector<pExpression>&& args) 
-            : lhss(move(lhss)), procId(move(procId)), args(move(args)) {}
+        CallStatement(TextPosition pos, vector<pAssignLHS>&& lhss, pIdentifier&& procId, vector<pExpression>&& args) 
+            :  SimpleStatement(pos), lhss(move(lhss)), procId(move(procId)), args(move(args)) {}
         vector<pAssignLHS> lhss;
         pIdentifier procId;
         vector<pExpression> args;
@@ -737,18 +761,18 @@ namespace ParseTree{
 
     class CallForallStatement : public SimpleStatement{
     public:
-        CallForallStatement(pIdentifier&& procId, vector<pWExpression>&& args) 
-            : procId(move(procId)), args(move(args)) {}
+        CallForallStatement(TextPosition pos, pIdentifier&& procId, vector<pWExpression>&& args) 
+             : SimpleStatement(pos), procId(move(procId)), args(move(args)) {}
         pIdentifier procId;
         vector<pWExpression> args;
     };
 
-    class SkipStatement : public SimpleStatement{};
+    class SkipStatement : public SimpleStatement{public: SkipStatement(TextPosition pos) : SimpleStatement(pos){}};
     
     class ITEStatement : public CompoundStatement{
     public:
-        ITEStatement(pWExpression&& cond, pStatement&& thenS, pStatement&& elseS = make_unique<SkipStatement>())
-            : cond(move(cond)), thenS(move(thenS)), elseS(move(elseS)){}
+        ITEStatement(TextPosition pos, pWExpression&& cond, pStatement&& thenS, pStatement&& elseS = make_unique<SkipStatement>())
+            : CompoundStatement(pos), cond(move(cond)), thenS(move(thenS)), elseS(move(elseS)){}
         pWExpression cond;
         pStatement   thenS;
         pStatement   elseS;
@@ -756,30 +780,32 @@ namespace ParseTree{
 
     class WhileStatement : public CompoundStatement{
     public:
-        WhileStatement(pWExpression&& cond, vector<SpecExpression>&& invariant, pStatement&& body)
-            : cond(move(cond)), invariant(move(invariant)), body(move(body)){}
+        WhileStatement(TextPosition pos, pWExpression&& cond, vector<SpecExpression>&& invariant, pStatement&& body)
+            : CompoundStatement(pos), cond(move(cond)), invariant(move(invariant)), body(move(body)){}
         pWExpression cond;
         vector<SpecExpression> invariant;
         pStatement   body;
     };
+    typedef unique_ptr<WhileStatement> pWhileStatement;
 
     class BreakStatement : public ControlStatement{
     public:
-        BreakStatement(pLabel&& target) : target(move(target)){}
+        BreakStatement(TextPosition pos, pLabel&& target) : ControlStatement(pos), target(move(target)){}
         
         pLabel target;
     };
+    typedef unique_ptr<BreakStatement> pBreakStatement;
 
     class GotoStatement : public ControlStatement{
     public:
-        GotoStatement(vector<pLabel>&& targets) : targets(move(targets)){}
+        GotoStatement(TextPosition pos, vector<pLabel>&& targets) : ControlStatement(pos), targets(move(targets)){}
         
-        vector<pLabel> targets;
+        Labels targets;
     };
 
     class ReturnStatement : public ControlStatement{
     public:
-        ReturnStatement() {}
+        ReturnStatement(TextPosition pos) : ControlStatement(pos) {}
     };
     
     // </editor-fold>

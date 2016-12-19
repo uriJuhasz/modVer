@@ -12,7 +12,6 @@
 using namespace frontend::boogie::ParseTree;
 using std::vector;
 using std::list;
-using std::unique_ptr;
 using std::string;
 using std::function;
 using std::make_unique;
@@ -37,20 +36,20 @@ static wstring toIdentifier(const wstring& s){
 
 bool isLabel() {
   Token* t = la;
-  return (la->kind == _ident && scanner->peek()->kind == _colon );
+  return (la->kind == _ident && scanner->Peek()->kind == _colon );
 } 
 
 bool isIdColon() {
   Token* t = la;
-  return (la->kind == _ident && scanner->peek()->kind == _colon );
+  return (la->kind == _ident && scanner->Peek()->kind == _colon );
 } 
 
 bool isBVBound() {
   if (la->kind != _digits)
     return false;
-  if (scanner->peek()->kind != _colon )
+  if (scanner->Peek()->kind != _colon )
     return false;
-  if (scanner->peek()->kind != _digits )
+  if (scanner->Peek()->kind != _digits )
     return false;
   return true;
 }
@@ -58,7 +57,7 @@ bool isBVBound() {
 bool isUnaryITEExpression() {
   auto t = la;
   while (t->kind=_neg || t->kind==_minus)
-    t=scanner->peek();
+    t=scanner->Peek();
   return t->kind=_ifKW;
 }
 
@@ -349,7 +348,7 @@ ImplementationP<. Program& prog .>
 .
 
 ImplSignature<. pProcSignature& sig .>
-= (. TypeParams typeParameters;
+= (. TypeParameters typeParameters;
      Formals formals;
      .)
   [ TypeParams<typeParameters> ]
@@ -360,7 +359,7 @@ ImplSignature<. pProcSignature& sig .>
 ImplFormals<. FormalDir dir, Formals& formals .>
 = "("
   [ IdsTypeS<. [dir,&formals](auto id, auto type)
-      {formals.push_back(make_unique<Formal>(move(id),move(type),input));} .> ]
+      {formals.push_back(make_unique<Formal>(move(id),move(type),dir));} .> ]
   ")"
 .
 
@@ -380,8 +379,6 @@ ScopedBlocksP<. ScopedBlocks& bs .>
 /*------------------------------------------------------------------------*/
 BoundVarsP<. BoundVars& vars .>
 = (.
-    Contract.Requires(x != null);
-    Contract.Ensures(Contract.ValueAtReturn(out ds) != null);
     List<TypedIdent>/*!*/ tyds = new List<TypedIdent>();
     ds = new List<Variable>();
     var dsx = ds;
@@ -394,7 +391,7 @@ LocalVar<. Locals& locals .>
 = (. Attributes attributes; .)
   "var"
   AttributesP<attributes>
-  IdsTypeWheres<. [attributes&,locals&](auto id, auto type, auto e){ 
+  IdsTypeWheres<. [&attributes,&locals](auto id, auto type, auto e){ 
     locals.push_back(make_unique<LocalVariable>( cloneC(attributes), move(id), type.clone() )) } .> 
   ";"
   .
@@ -525,13 +522,13 @@ BigBlock<. BlockSeq& bs .>
     (. bs.push_back(make_unique<Block>(label,cmds,endCmd)); .)
 .
 
-TransferCmd<. ControlStatementSeq& ss .>
-= (. Contract.Ensures(Contract.ValueAtReturn(out tc) != null); tc = dummyTransferCmd;
+TransferCmd<. pControlStatement& ss .>
+= (. tc = dummyTransferCmd;
      Token y;  List<IToken>/*!*/ xs;
      List<String> ss = new List<String>();
   .)
   ( "goto"             (. y = t; .)
-    IdentifiersCS<out xs>     (. foreach(IToken/*!*/ s in xs){
+    IdentifiersCS<xs>     (. foreach(IToken/*!*/ s in xs){
                             Contract.Assert(s != null);
                             ss.Add(s.val); }
                           tc = new GotoCmd(y, ss);
@@ -541,77 +538,69 @@ TransferCmd<. ControlStatementSeq& ss .>
   .
 
 StructuredCmd<. pComplexStatement& cmd .>
-= (. Contract.Ensures(Contract.ValueAtReturn(out ec) != null); ec = dummyStructuredCmd;  Contract.Assume(cce.IsPeerConsistent(ec));
-     IfCmd/*!*/ ifcmd;  WhileCmd/*!*/ wcmd;  BreakCmd/*!*/ bcmd;
-  .)
-  ( IfCmd<out ifcmd>    (. ec = ifcmd; .)
-  | WhileCmd<out wcmd>  (. ec = wcmd; .)
-  | BreakCmd<out bcmd>  (. ec = bcmd; .)
-  )
+=   IfCmd<cmd>
+  | WhileCmd<cmd>
+  | BreakCmd<cmd>  
   .
 
-IfCmd<out IfCmd/*!*/ ifcmd>
-= (. Contract.Ensures(Contract.ValueAtReturn(out ifcmd) != null); IToken/*!*/ x;
-     Expr guard;
-     StmtList/*!*/ thn;
-     IfCmd/*!*/ elseIf;  IfCmd elseIfOption = null;
-     StmtList/*!*/ els;  StmtList elseOption = null;
+IfCmd<. pStatement& c .>
+= (. TextPosition pos;
+     pWExpression guard;
+     BlockSeq thn;
+     ITEStatement elseIf;
+     BlockSeq els;
   .)
-  "if"                       (. x = t; .)
-  Guard<out guard>
-  "{" StmtList<out thn>
+  "if"                       (. pos = toPos(t); .)
+  Guard<guard>
+  BlockStmt<thn>
   [ "else"
-    ( IfCmd<out elseIf>      (. elseIfOption = elseIf; .)
-    | "{"
-      StmtList<out els>      (. elseOption = els; .)
+    ( IfCmd<elseIf>          (. els.push_back(elseIfOption = elseIf; .)
+    | BlockStmt<els>         
     )
   ]
   (. ifcmd = new IfCmd(x, guard, thn, elseIfOption, elseOption); .)
-  .
+.
 
-WhileCmd<out WhileCmd/*!*/ wcmd>
-= (. Contract.Ensures(Contract.ValueAtReturn(out wcmd) != null); IToken/*!*/ x;  Token z;
-     Expr guard;  Expr/*!*/ e;  bool isFree;
-     List<PredicateCmd/*!*/> invariants = new List<PredicateCmd/*!*/>();
+BlockStmt<. BlockSeq& b .>
+= "{" StmtList<b>
+.
+
+WhileCmd<. pWhileStatement& c .>
+= (. TextPosition pos;
+     Token z;
+     pWExpression guard;
+     SpecExpressions invariants;
      StmtList/*!*/ body;
      QKeyValue kv = null;
   .)
-  "while"             (. x = t; .)
-  Guard<out guard>    (. Contract.Assume(guard == null || cce.Owner.None(guard)); .)
-  {                   (. isFree = false; z = la/*lookahead token*/; .)
-    [ "free"          (. isFree = true;  .)
-    ]
+  "while"             (. pos = toPos(t); .)
+  Guard<guard>        
+  {                   (. bool isFree = false; TextPosition pos2 = toPos(la); pExpression inv; .)
+    [ "free"          (. isFree = true;  .) ]
     "invariant"
     AttributesP<attributes>
-    Expression<out e> (. if (isFree) {
-                           invariants.Add(new AssumeCmd(z, e, kv));
-                         } else {
-                           invariants.Add(new AssertCmd(z, e, kv));
-                         }
-						 kv = null;
-                      .)
+    Expression<inv>   (. invariants.push_back(make_unique<SpecExpression>(pos2,move(inv),isFree,move(attributes)); .)
     ";"
   }
-  "{"
-  StmtList<out body>  (. wcmd = new WhileCmd(x, guard, invariants, body); .)
-  .
+  BlockStmt<body>     (. c = make_unique<WhileStatement>(pos, move(guard), move(invariants), move(body)); .)
+.
 
-Guard<out Expr e>
-= (. Expr/*!*/ ee;  e = null; .)
+Guard<. pWExpression& e .>
+= (. pExpression ee .)
   "("
-  ( "*"                   (. e = null; .)
-  | Expression<out ee>    (. e = ee; .)
+  ( "*"               (. e = make_unique<WildCardExpression>(toPos(t)); .)
+  | Expression<ee>    (. e = ee; .)
   )
   ")"
   .
 
-BreakCmd<out BreakCmd/*!*/ bcmd>
-= (.Contract.Ensures(Contract.ValueAtReturn(out bcmd) != null); IToken/*!*/ x;  IToken/*!*/ y;
-     string breakLabel = null;
+BreakCmd<. pBreakStatement& c .>
+= (. TextPosition pos;
+     pIdentifier id;
   .)
-  "break"             (. x = t; .)
-  [ IdentifierP<out y>      (. breakLabel = y.val; .)
-  ] ";"               (. bcmd = new BreakCmd(x, breakLabel); .)
+  "break"                (. pos = toPos(t); .)
+  [ IdentifierP<id> ]      
+  ";"                  (. c = make_unique<BreakStatement>(pos, id); .)
   .
 
 /*------------------------------------------------------------------------*/
@@ -644,13 +633,13 @@ PredicateCmd<. pSimpleStatement& c .>
     | "assume"                       (. isAssert=false;     .)
   )                                  (. pos = toTextPos(t); .)
   AttributesP<attributes>
-  Proposition<out e>    
+  Proposition<e>    
   ";"                                 (. c = isAssert ? new AssertCmd(pos, attributes, e) : new AssumeCmd(pos, attributes, e); .)
 .
 
 HavocCmd<. pSimpleStatement& c .>
 = (. TextPosition pos;
-     list<unique_ptr<Identifier>> ids 
+     Identifiers ids 
   .)
   "havoc"               (. pos = t; .)
   IdentifiersCS<ids> ";"  (. c = new HavocCmd(x,ids); .)
@@ -665,13 +654,13 @@ YieldCmd<. pSimpleStatement& c .>
 /*------------------------------------------------------------------------*/
 
 Label<. pLabel& label .>
-= (. unique_ptr<Identifier> id; .)
-  IdentifierP<out id> ":" (. label = new Label(id); .)
+= (. pIdentifier id; .)
+  IdentifierP<id> ":" (. label = new Label(id); .)
   .
 
 AssignCmd<. pSimpleStatement& c .>
-= (. vector<pAssignLHS> lhss;
-     vector<pExpression> rhss;
+= (. AssignLHSs   lhss;
+     Expressions  rhss;
      TextPosition pos;                   
   .)
     AssignLHS<lhss> { "," AssignLHS<lhss> }
@@ -691,8 +680,8 @@ AssignLHS<. vector<pAssignLHS>& lhss .>
 
 MapAssignIndex<. pAssignLHS& lhs .>
 = (. TextPosition pos;
-     list<unique_ptr<Expression>> indices;
-     Expr e;
+     Expressions indices;
+     pExpression e;
   .)
   "["                          (. pos = toTextPos(t); .)
     [ ExpressionCS<indices> ]
@@ -701,8 +690,7 @@ MapAssignIndex<. pAssignLHS& lhs .>
 
 /*------------------------------------------------------------------------*/
 CallCmd<. pStatement& c .>
-= (. Contract.Ensures(Contract.ValueAtReturn(out c) != null); 
-     IToken x; 
+= (. IToken x; 
      bool isAsync = false;
      bool isFree = false;
      QKeyValue kv = null;
@@ -714,11 +702,11 @@ CallCmd<. pStatement& c .>
   ]
   "call"                          (. x = t; .)
   AttributesP<attributes>
-  CallParams<isAsync, isFree, kv, x, out c> (. .)
+  CallParams<isAsync, isFree, kv, x, c> (. .)
   .
 
 ParCallCmd<. pStatement& c .>
-= (. Contract.Ensures(Contract.ValueAtReturn(out d) != null); 
+= (. Contract.Ensures(Contract.ValueAtReturn(d) != null); 
      IToken x; 
      QKeyValue kv = null;
 	 Cmd c = null;
@@ -726,8 +714,8 @@ ParCallCmd<. pStatement& c .>
   .)
   "par"                          (. x = t; .)
   AttributesP<attributes>
-  CallParams<false, false, kv, x, out c> (. callCmds.Add((CallCmd)c); .) 
-  { "|" CallParams<false, false, kv, x, out c> (. callCmds.Add((CallCmd)c); .) 
+  CallParams<false, false, kv, x, c> (. callCmds.Add((CallCmd)c); .) 
+  { "|" CallParams<false, false, kv, x, c> (. callCmds.Add((CallCmd)c); .) 
   }
   ";" (. d = new ParCallCmd(x, callCmds, kv); .)
   .
@@ -741,22 +729,22 @@ CallParams<. bool isAsync, bool isFree, Attributes& attributes, pStatement& c .>
     IToken p;
 	c = null;
   .)
-  IdentifierP<out first>
+  IdentifierP<first>
     ( "("
-      [ Expression<out en>       (. es.Add(en); .)
-        { "," Expression<out en> (. es.Add(en); .)
+      [ Expression<en>       (. es.Add(en); .)
+        { "," Expression<en> (. es.Add(en); .)
         }
       ]
       ")"                         (. c = new CallCmd(x, first.val, es, ids, kv); ((CallCmd) c).IsFree = isFree; ((CallCmd) c).IsAsync = isAsync; .)
     |
                                   (. ids.Add(new IdentifierExpr(first, first.val)); .)
-      [ "," IdentifierP<out p>  (. ids.Add(new IdentifierExpr(p, p.val)); .)
-        { "," IdentifierP<out p>  (. ids.Add(new IdentifierExpr(p, p.val)); .)
+      [ "," IdentifierP<p>  (. ids.Add(new IdentifierExpr(p, p.val)); .)
+        { "," IdentifierP<p>  (. ids.Add(new IdentifierExpr(p, p.val)); .)
         }
       ] ":="
-      IdentifierP<out first> "("
-      [ Expression<out en>       (. es.Add(en); .)
-        { "," Expression<out en> (. es.Add(en); .)
+      IdentifierP<first> "("
+      [ Expression<en>       (. es.Add(en); .)
+        { "," Expression<en> (. es.Add(en); .)
         }
       ]
       ")"                         (. c = new CallCmd(x, first.val, es, ids, kv); ((CallCmd) c).IsFree = isFree; ((CallCmd) c).IsAsync = isAsync; .)
@@ -766,7 +754,7 @@ CallParams<. bool isAsync, bool isFree, Attributes& attributes, pStatement& c .>
 /*------------------------------------------------------------------------*/
 //Identifiers
 IdentifiersCS<. Identifiers& ids .>
-  =  IdentifierC<ids> { "," IdentifierC<id> }
+  =  IdentifierC<ids> { "," IdentifierC<ids> }
 .
 
 IdentifiersWS<. Identifiers& ids .>
@@ -1107,7 +1095,7 @@ CastExpression<. pExpression& e .>
 .
 
 
-CodeExpression<. unique_ptr<Expression>& e .>
+CodeExpression<. pExpression& e .>
 = (. TextPosition pos;
      Locals locals;
      list<Block>    blocks;   .)
@@ -1117,11 +1105,11 @@ CodeExpression<. unique_ptr<Expression>& e .>
   .
 
 SpecBlock<. list<Block>& blocks .>
-= (. unique_ptr<Identifier> id;
-     list<unique_ptr<Cmd>> commands;
-     TextPosition pos2;
-     list<unique_ptr<Identifier>> nexts;
-     unique_ptr<Block> b;
+= (. pIdentifier        id;
+     SimpleStatementSeq commands;
+     TextPosition       pos2;
+     Identifiers        nexts;
+     pBlock             b;
 
 
      IToken label;
@@ -1134,9 +1122,9 @@ SpecBlock<. list<Block>& blocks .>
   IdentifierP<id> ":"
   { Cmd<cs> }
   ( "goto"                      (. pos2 = toPos(t); .)
-    IdentifiersCS<nexts>          (. b = new Block(id, cs, new GotoCmd(pos2,nexts)) .)
+    IdentifiersCS<nexts>        (. b = new Block(id, cs, new GotoCmd(pos2,nexts)) .)
   | "return"                    (. pos2 = toPos(t); .)
-    Expression<out e>           (. b = new Block(id, cs, new ReturnExprCmd(pos2,e)); .)
+    Expression<e>               (. b = new Block(id, cs, new ReturnExprCmd(pos2,e)); .)
   ) (. blocks.push_back(move(b)) .)
   ";"
   .
@@ -1146,13 +1134,13 @@ AttributesP<. Attributes& attributes .>
   { "{" AttributeI<attributes> "}" }
 .
 
-AttributesAndTriggers<. unique_ptr<Attributes>& attributes, unique_ptr<Triggers> triggers .>
+AttributesAndTriggers<. Attributes& attributes, Triggers& triggers .>
 = (. attributes = new Attributes(); triggers = new Triggers() .)
   { "{" (AttributeI<*attributes> | TriggerI<*triggers>) "}" }
 .
 
 TriggerI<. Triggers& triggers .> 
-= (. unique_ptr<Trigger> trigger = new Trigger() .)
+= (. pTrigger trigger = new Trigger() .)
     ExpressionCS<trigger.expressions> (. triggers.push_back(move(trigger)); .)
 .
 
@@ -1164,16 +1152,16 @@ AttributeI<. Attributes& attributes .>
         ]       (. attributes.push_back(move(attribute)).)
 .  //Boogie takes { :nopats Expression } as a dis-unification constraint
 
-AttributeParameter<. list<unique_ptr<AttributeParam>>& params .>
-= (. unique_ptr<Expression> e; .)
+AttributeParameter<. vector<pAttributeParam>& params .>
+= (. pExpression e; .)
   ( string            (. params.push_back(new     StringAttributeParam( t, t.val.sub_string(1, t.val.Length-2) ); .)
   | Expression<e>     (. params.push_back(new ExpressionAttributeParam( e )); .)
   )
 .
 
-IfThenElseExpression<. unique_ptr<Expression>& e .>
+IfThenElseExpression<. pExpression& e .>
 = (. Token tok;
-     unique_ptr<Expression> e0, e1, e2; .)
+     pExpression e0, e1, e2; .)
   "if" (. tok = t; .) Expression<e0> "then" Expression<e1> "else" Expression<e2>
   (. e = new FAExpression(tok, new IfThenElse(tok), new List<Expr>{ e0, e1, e2 }); .)
 .
@@ -1209,7 +1197,7 @@ Nat<. TextPosition& pos, Integer& n .>
   .
 
 /*------------------------------------------------------------------------*/
-Dec<. unique_ptr<LiteralExpression>& le .>
+Dec<. pLiteralExpression& le .>
 = (. string s = ""; .)
   (   decimal     (. s = t.val; .)
     | dec_float   (. s = t.val; .)
@@ -1224,7 +1212,7 @@ Dec<. unique_ptr<LiteralExpression>& le .>
   .
 
 /*------------------------------------------------------------------------*/
-BvLit<. unique_ptr<LiteralExpression>& le .>
+BvLit<. pLiteralExpression& le .>
 =
   bvlit
   (.
@@ -1246,7 +1234,7 @@ BvLit<. unique_ptr<LiteralExpression>& le .>
   .)
   .
 
-FloatE<. unique_ptr<LiteralExpression>& le .> = 
+FloatE<. pLiteralExpression& le .> = 
 (. Rational r; TextPosition pos .)
 Float<r> (. return new LiteralExpression(pos,r); .)
 .

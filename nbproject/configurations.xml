@@ -62,6 +62,7 @@
             <incDir>
               <pElem>../../workspace4.7/boost_1_62_0</pElem>
               <pElem>../../../../mingw64/mingw32/lib/gcc/i686-w64-mingw32/6.2.0/include/c++</pElem>
+              <pElem>src</pElem>
             </incDir>
           </ccTool>
         </makeTool>
@@ -78,7 +79,6 @@
       <folder path="0/src/common">
         <ccTool>
           <incDir>
-            <pElem>src</pElem>
             <pElem></pElem>
             <pElem>src/common</pElem>
           </incDir>
@@ -95,7 +95,6 @@
       <folder path="0/src/frontend/boogie/manual">
         <ccTool>
           <incDir>
-            <pElem>src</pElem>
             <pElem></pElem>
             <pElem>src/frontend/boogie/manual</pElem>
           </incDir>
@@ -104,7 +103,6 @@
       <folder path="0/src/frontend/parser">
         <ccTool>
           <incDir>
-            <pElem>src</pElem>
             <pElem></pElem>
             <pElem>src/frontend/parser</pElem>
           </incDir>
@@ -118,7 +116,6 @@
         <ccTool flags="0">
           <incDir>
             <pElem>src/frontend</pElem>
-            <pElem>src</pElem>
             <pElem>Default</pElem>
           </incDir>
         </ccTool>
