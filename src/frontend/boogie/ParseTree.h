@@ -129,6 +129,7 @@ namespace ParseTree{
     public:
         UnresolvedType(TextPosition pos, pIdentifier&& id, Types&& args)
             : Type(pos), id(move(id)), args(move(args)){}
+        pType clone() const override{ return make_unique<UnresolvedType>(pos,id->clone(), cloneC(args)); }
         pIdentifier id;
         Types args;
     };
@@ -266,8 +267,8 @@ namespace ParseTree{
                    Variable::GLOBAL),
                    we(move(we))
         {}
-        virtual unique_ptr<GlobalVariable> clone() const {return 
-            make_unique<GlobalVariable>(pos,cloneC(attributes), id->clone(), type->clone(),we->clone()); }
+        virtual unique_ptr<GlobalVariable> clone() const;
+        //{return make_unique<GlobalVariable>(pos,cloneC(attributes), id->clone(), type->clone(),we->clone()); }
         pExpression we;
     };
     

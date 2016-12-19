@@ -450,7 +450,7 @@ AttrsIdsType<. ActionAIT action .>
 TypeP<. pType& type .>
 = (  TypeAtom<type>
   | TypeConstructor<type>
-  | MapType<type>)
+  | MapTypeP<type>)
 .
 
 TypeAtom<. pType& type .>
@@ -472,15 +472,15 @@ TypeArgs<. Types types .>
      pType       type;  .)
   (
     ((  TypeAtom<type>    (. types.push_back(move(type)); .)
-      | IdentifierP<id>    (. types.push_back(new UnresolvedType(id->pos,id,Types())); .)
+      | IdentifierP<id>    (. types.push_back(make_unique<UnresolvedType>(id->pos,id,Types())); .)
     )
-    [ TypeArgs<ts> ] )
-  | MapType<type>      (. types.push_back(move(type)); .)
+    [ TypeArgs<types> ] )
+  | MapTypeP<type>      (. types.push_back(move(type)); .)
   )
   .
 
 
-MapType<. pType& type .>
+MapTypeP<. pType& type .>
 = (. TextPosition pos;
      TypeParameters typeParameters;
      vector<pType> arguments;
@@ -489,7 +489,7 @@ MapType<. pType& type .>
   [ TypeParams<typeParameters> ]
   "[" (. pos = toPos(t); .) [ TypesCS<arguments> ] "]"
   TypeP<result>
-  (. type = new MapType(pos, typeParameters, arguments, result); .)
+  (. type = make_unique<MapType>(pos, typeParameters, arguments, result); .)
 .
 
 
