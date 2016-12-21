@@ -10,6 +10,10 @@ namespace common{
     typedef bool        Boolean;
     typedef std::wstring String;
     typedef std::wstring ID;
+    
+    int32_t  string2Int32   (const String& s);
+    Integer  string2Integer (const String& s);
+    Rational string2Rational(const String& s);
 }
 
 #endif

@@ -1,12 +1,12 @@
-#ifndef FRONTEND_BOOGIE_PRASETREE_H
-#define FRONTEND_BOOGIE_PRASETREE_H
+#ifndef FRONTEND_BOOGIE_PARSETREE_H
+#define FRONTEND_BOOGIE_PARSETREE_H
 
 #include <set>
 #include <vector>
 #include <memory>
 #include <list>
 #include "common/data_types.h"
-#include "frontend/TextPosition.h"
+#include "../TextPosition.h"
 
 namespace frontend{
 namespace boogie{
@@ -61,6 +61,11 @@ namespace ParseTree{
     typedef unique_ptr<WildCardExpression> pWCExpression;
     class WExpression;
     typedef unique_ptr<WExpression> pWExpression;
+    
+    class BoundVariable;
+    typedef unique_ptr<BoundVariable> pBoundVar;
+    typedef vector<pBoundVar> BoundVariables;
+   
     // </editor-fold>
     
     // <editor-fold desc="Identifiers">
@@ -105,7 +110,7 @@ namespace ParseTree{
         TypeConstructorInstance(TextPosition pos, pIdentifier&& id, list<pType>&& arguments)
             : Type(pos), id(move(id)), arguments(move(arguments))
         {}
-            
+        virtual pType clone() const override;
         pIdentifier id;
         list<pType> arguments;
     };
@@ -114,6 +119,7 @@ namespace ParseTree{
         MapType(TextPosition pos, TypeParameters&& typeParameters, vector<pType>&& argumentTypes, pType&& resultType)
                 : Type(pos), typeParameters(move(typeParameters)), argumentTypes(move(argumentTypes)), resultType(move(resultType))
         {}
+        virtual pType clone() const override;
         TypeParameters typeParameters;
         vector<pType> argumentTypes;
         pType resultType; 
@@ -122,6 +128,7 @@ namespace ParseTree{
     public:
         VariableType(TextPosition pos, pTypeVariable&& var)
             : Type(pos), var(move(var)){}
+        virtual pType clone() const override;
         pTypeVariable var;
     };
 
@@ -210,6 +217,7 @@ namespace ParseTree{
     };
 
     typedef unique_ptr<Variable> pVariable;
+    typedef vector<pVariable> Variables;
 
     class ConstantOrderSpec;
     typedef unique_ptr<ConstantOrderSpec> pConstantOrderSpec;
@@ -238,6 +246,8 @@ namespace ParseTree{
     public:
         ConstantParentSpec(pIdentifier&& id, bool isUnique)
             : id(move(id)), isUnique(isUnique){}
+        ConstantParentSpec(const ConstantParentSpec& o)
+            : id(o.id->clone()), isUnique(o.isUnique){}
         ConstantParentSpec(ConstantParentSpec&& other)
             : id(move(other.id)), isUnique(other.isUnique){}
 
@@ -245,11 +255,14 @@ namespace ParseTree{
         bool isUnique;
     };
     class ConstantOrderSpec : public PTreeNode {
-    	public:
-    		bool specified = false;
-    		bool complete = false;
-    		vector<ConstantParentSpec> parents;
-    		pConstantOrderSpec clone() const;
+    public:
+        ConstantOrderSpec();
+        ConstantOrderSpec(const ConstantOrderSpec& o);
+        pConstantOrderSpec clone() const;
+
+        bool specified = false;
+        bool complete = false;
+        vector<ConstantParentSpec> parents;
     };
     
     class GlobalVariable : public Variable{
@@ -272,9 +285,6 @@ namespace ParseTree{
         pExpression we;
     };
     
-    class BoundVariable;
-    typedef unique_ptr<BoundVariable> pBoundVar;
-    typedef vector<pBoundVar> BoundVars;
     class BoundVariable : public Variable{
     public:
         BoundVariable(Attributes&&  attributes,
@@ -379,10 +389,10 @@ namespace ParseTree{
     typedef unique_ptr<VariableExpression> pVariableExpression;
     class SpecExpression : public PTreeNode{
     public:
-        SpecExpression(const TextPosition& pos, pExpression&& e, bool isFree, Attributes attributes = Attributes())
-            : PTreeNode(pos), e(move(e)), isFree(isFree), attributes(attributes) {}
-        pExpression e;
+        SpecExpression(const TextPosition& pos, bool isFree, pExpression&& e, Attributes attributes = Attributes())
+            : PTreeNode(pos), isFree(isFree), e(move(e)), attributes(move(attributes)) {}
         bool isFree;
+        pExpression e;
         Attributes attributes;
     };
     
@@ -431,6 +441,7 @@ namespace ParseTree{
         pProcSpec spec;
     };
     class Procedure : public ProcedureSC{
+    public:
         Procedure(pIdentifier&& id, Attributes&& attributes, pProcSignature&& sig, pProcSpec&& spec)
             : ProcedureSC( move(id), move(attributes), move(sig), move(spec)) {}
     };
@@ -441,21 +452,16 @@ namespace ParseTree{
     
     typedef vector<LocalVariable> pLocals;
     
-    class ScopeBlock : public PTreeNode{
-    public:
-        pLocals locals;
-        
-    };
-    
-    class ScopedBlocks;
-    typedef unique_ptr<ScopedBlocks> pScopedBlocks;
+    class ScopedBlock;
+    typedef unique_ptr<ScopedBlock> pScopedBlock;
     
     class Implementation : public ProcedureSC{
+    public:
         Implementation(
-            pIdentifier&& id, Attributes&& attributes, pProcSignature&& sig, pProcSpec&& spec, pScopedBlocks&& body)
+            pIdentifier&& id, Attributes&& attributes, pProcSignature&& sig, pProcSpec&& spec, pScopedBlock&& body)
             : ProcedureSC( move(id), move(attributes), move(sig), move(spec)), 
               body(move(body)) {}
-        pScopedBlocks body;
+        pScopedBlock body;
     };
     typedef unique_ptr<Implementation> pImplementation;
     // </editor-fold>
@@ -480,25 +486,29 @@ namespace ParseTree{
     public:
         virtual ~AttributeParam() = 0;
         virtual pAttributeParam clone() const = 0;
+    protected:
+        AttributeParam(TextPosition pos) : PTreeNode(pos) {}
     };
     class StringAttributeParam : public AttributeParam{
     public:
-        StringAttributeParam(const string& value)
-            : value(value){}
-        std::string value;
-        pAttributeParam clone() const override{return make_unique<StringAttributeParam>(value);};
+        StringAttributeParam(TextPosition pos, const wstring& value)
+            : AttributeParam(pos), value(value){}
+        wstring value;
+        pAttributeParam clone() const override;//{return make_unique<StringAttributeParam>(value);};
     };
     class ExpressionAttributeParam : public AttributeParam{
     public:
-        ExpressionAttributeParam(pExpression value)
-            : value(move(value)){}
+        ExpressionAttributeParam(pExpression&& value);
+//            : AttributeParam(value->pos), value(move(value)){}
         pExpression value;
+        pAttributeParam clone() const override; //{return make_unique<ExpressionAttributeParam>(value->clone());};
     };
     class Trigger : public PTreeNode{
     public:
-        Trigger(vector<pExpression>&& _ts)
-            :ts(_ts){}
-        vector<pExpression> ts;
+        Trigger(){}
+        Trigger(Expressions&& es)
+            :es(move(es)){}
+        Expressions es;
     };
     // </editor-fold>
 
@@ -573,25 +583,39 @@ namespace ParseTree{
     public: 
         OpC(TextPosition pos,const wstring& name) : Operator(pos),name(name){}
         unique_ptr<Operator> clone() const override{ return make_unique<OpC>(pos,name); }
-        static pOperator implies(TextPosition pos){return make_unique<OpC>(pos,"=>");}
-        static pOperator explies(TextPosition pos){return make_unique<OpC>(pos,"<=");}
+        static pOperator implies(TextPosition pos){return make_unique<OpC>(pos,L"=>");}
+        static pOperator explies(TextPosition pos){return make_unique<OpC>(pos,L"<=");}
 
-        static pOperator equiv(TextPosition pos){return make_unique<OpC>(pos,"<=>");}
-        static pOperator andOp(TextPosition pos){return make_unique<OpC>(pos,"&&");}
-        static pOperator orOp(TextPosition pos){return make_unique<OpC>(pos,"||");}
-        static pOperator notOp(TextPosition pos){return make_unique<OpC>(pos,"!");}
+        static pOperator equiv(TextPosition pos){return make_unique<OpC>(pos,L"<=>");}
+        static pOperator andOp(TextPosition pos){return make_unique<OpC>(pos,L"&&");}
+        static pOperator orOp(TextPosition pos){return make_unique<OpC>(pos,L"||");}
+        static pOperator notOp(TextPosition pos){return make_unique<OpC>(pos,L"!");}
         
-        static pOperator minus(TextPosition pos){return make_unique<OpC>(pos,"-");}
-        static pOperator add(TextPosition pos){return make_unique<OpC>(pos,"+");}
-        static pOperator sub(TextPosition pos){return make_unique<OpC>(pos,"-");}
-        static pOperator mul(TextPosition pos){return make_unique<OpC>(pos,"mul");}
-        static pOperator div(TextPosition pos){return make_unique<OpC>(pos,"div");}
-        static pOperator mod(TextPosition pos){return make_unique<OpC>(pos,"%");}
-        static pOperator divR(TextPosition pos){return make_unique<OpC>(pos,"/");}
-        static pOperator pow(TextPosition pos){return make_unique<OpC>(pos,"pow");}
-        
-        static pOperator bvSelect(TextPosition pos){return make_unique<OpC>(pos,"[:]");}
+        static pOperator ite(TextPosition pos){return make_unique<OpC>(pos,L"ite");}
 
+        static pOperator minus(TextPosition pos){return make_unique<OpC>(pos,L"-");}
+        static pOperator add(TextPosition pos){return make_unique<OpC>(pos,L"+");}
+        static pOperator sub(TextPosition pos){return make_unique<OpC>(pos,L"-");}
+        static pOperator mul(TextPosition pos){return make_unique<OpC>(pos,L"mul");}
+        static pOperator div(TextPosition pos){return make_unique<OpC>(pos,L"div");}
+        static pOperator mod(TextPosition pos){return make_unique<OpC>(pos,L"%");}
+        static pOperator divR(TextPosition pos){return make_unique<OpC>(pos,L"/");}
+        static pOperator pow(TextPosition pos){return make_unique<OpC>(pos,L"pow");}
+        
+        static pOperator bvSelect(TextPosition pos){return make_unique<OpC>(pos,L"[:]");}
+        static pOperator bvConcat(TextPosition pos){return make_unique<OpC>(pos,L"++");}
+
+        static pOperator eq(TextPosition pos){return make_unique<OpC>(pos,L"=");}
+        static pOperator ne(TextPosition pos){return make_unique<OpC>(pos,L"!=");}
+        static pOperator lt(TextPosition pos){return make_unique<OpC>(pos,L"<");}
+        static pOperator le(TextPosition pos){return make_unique<OpC>(pos,L"<=");}
+        static pOperator gt(TextPosition pos){return make_unique<OpC>(pos,L">");}
+        static pOperator ge(TextPosition pos){return make_unique<OpC>(pos,L">=");}
+
+        static pOperator subType(TextPosition pos){return make_unique<OpC>(pos,L"<:");}
+        
+        static pOperator mapWrite(TextPosition pos){return make_unique<OpC>(pos,L"[:=]");}
+        static pOperator mapRead(TextPosition pos){return make_unique<OpC>(pos,L"[]");}
         wstring name;
     };
     
@@ -601,11 +625,13 @@ namespace ParseTree{
         UserDefinedOp(pIdentifier&& id) : Operator(id->pos), id(move(id)){}
         unique_ptr<Operator> clone() const override{ return make_unique<UserDefinedOp>(id->clone()); }
         pIdentifier id;
+        
+        static pOperator make(pIdentifier&& id){return make_unique<UserDefinedOp>(move(id)); }
     };
     class CastOp  : public Operator{
     public:
-        CastOp(pType&& type) : Operator(type->pos), type(move(type)){}
-        unique_ptr<Operator> clone() const override{ return make_unique<CastOp>(type->clone()); }
+        CastOp(TextPosition pos,pType&& type) : Operator(pos), type(move(type)){}
+        unique_ptr<Operator> clone() const override{ return make_unique<CastOp>(pos,type->clone()); }
         pType type;
     };
 
@@ -619,27 +645,45 @@ namespace ParseTree{
         virtual pExpression clone() const override{ return make_unique<FAExpression>(op->clone(),cloneC(args)); }
 
         pOperator op;
-        vector<pExpression> args;
+        Expressions args;
         
-//        static unique_ptr<FAExpression> make(pOperator&& op){return make_unique<FAExpression>(op, Expressions());}
-        static unique_ptr<FAExpression> make(pOperator&& op,std::initializer_list<pExpression> args){
-            return make_unique<FAExpression>(op, Expressions(move(args)));}
+        static unique_ptr<FAExpression> make(pOperator&& op){ return make(move(op),Expressions()); }
+        static unique_ptr<FAExpression> make(pOperator&& op,pExpression&& e0){ 
+            Expressions es; es.push_back(move(e0));
+            return make(move(op),move(es)); 
+        }
+        static unique_ptr<FAExpression> make(pOperator&& op,pExpression&& e0, pExpression&& e1){ 
+            Expressions es; es.push_back(move(e0)); es.push_back(move(e1));
+            return make(move(op),move(es)); 
+        }
+        static unique_ptr<FAExpression> make(pOperator&& op,pExpression&& e0, pExpression&& e1, pExpression&& e2){ 
+            Expressions es; es.push_back(move(e0)); es.push_back(move(e1)); es.push_back(move(e2));
+            return make(move(op),move(es)); 
+        }
+        static unique_ptr<FAExpression> make(pOperator&& op,Expressions&& args){
+            return move(make_unique<FAExpression>(move(op), move(args)));
+        }
             
     };
     class QExpression : public Expression{
     public:
-        QExpression(TextPosition pos, Binder binder, TypeParameters&& tVars, vector<pBoundVariable>&& vars, pExpression e)
-            : Expression(pos), binder(binder), tVars(move(tVars)), vars(move(vars)), e(move(e)) {}
-        virtual pExpression clone() const override{ return make_unique<QExpression>(pos,binder, cloneC(tVars), cloneC(vars), e->clone()); }
+        QExpression(TextPosition pos, Binder binder, Attributes&& attrs, Triggers&& triggers, 
+                    TypeParameters&& tVars, BoundVariables&& vars, pExpression e)
+            : Expression(pos), binder(binder), attributes(move(attributes)), triggers(move(triggers)),
+              tVars(move(tVars)), vars(move(vars)), e(move(e)) {}
+        virtual pExpression clone() const override; //{ return make_unique<QExpression>(pos,binder, cloneC(tVars), cloneC(vars), e->clone()); }
 
-        Binder binder;
+        Binder         binder;
+        Attributes     attributes;
+        Triggers       triggers;
         TypeParameters tVars;
-        vector<pBoundVariable> vars;
-        pExpression e;
+        BoundVariables vars;
+        pExpression    e;
     };
     class OldExpression : public Expression{
     public:
         OldExpression(TextPosition pos, pExpression&& e) : Expression(pos), e(move(e)){}
+        virtual pExpression clone() const override;
         pExpression e;
     };
     class LiteralExpression : public Expression{
@@ -651,7 +695,11 @@ namespace ParseTree{
     template<class T>class LiteralExpressionC : public LiteralExpression{
     public:
         LiteralExpressionC(TextPosition pos, T&& val) : LiteralExpression(pos), val(move(val)){}
+//        LiteralExpressionC(TextPosition pos, T val) : LiteralExpression(pos), val(val){}
         T val;
+        virtual pExpression clone() const override;
+        
+        
     };
     
     class BVConstant{ 
@@ -663,6 +711,7 @@ namespace ParseTree{
     };
     class Float{
     public:
+        Float(){}
         Float(Integer mantissa, int mantissaBits, Integer exponent, int exponentBits, bool sign)
             : mantissa(mantissa), mantissaBits(mantissaBits), 
                 exponent(exponent), exponentBits(exponentBits),
@@ -673,8 +722,8 @@ namespace ParseTree{
         Integer exponent;
         int exponentBits;
         bool sign;
-
     };
+    Float    string2Float   (const String& s);
     
     typedef LiteralExpressionC<bool>       BooleanLiteralExpression;
     typedef LiteralExpressionC<Integer>    IntegerLiteralExpression;
@@ -682,185 +731,243 @@ namespace ParseTree{
     typedef LiteralExpressionC<Float>      FloatLiteralExpression;
     typedef LiteralExpressionC<BVConstant> BVLiteralExpression;
     
-    class ScopedSimpleBlocks;
-    typedef unique_ptr<ScopedSimpleBlocks> pScopedSimpleBlocks;
+    class CBBlockStatement;
+    typedef unique_ptr<CBBlockStatement> pCBBlockStatement;
+    
+    typedef vector<pLocalVariable> Locals;
+
     class CodeExpression : public Expression{
     public:
-        CodeExpression(TextPosition pos, pScopedSimpleBlocks&& ss) : Expression(pos), ss(move(ss)){}
-        pScopedSimpleBlocks ss;
+        CodeExpression(TextPosition pos, Locals&& locals, pCBBlockStatement&& ss)
+            : Expression(pos), locals(move(locals)), ss(move(ss)){}
+        virtual pExpression clone() const override;
+        Locals locals;
+        pCBBlockStatement ss;
     };
     // </editor-fold>
 
     // <editor-fold desc="Statements">
-    class Statement : public PTreeNode{public:Statement(TextPosition pos) : PTreeNode(pos){}};
-    class SimpleStatement : public Statement{public:SimpleStatement(TextPosition pos) : Statement(pos){}};
-    class ComplexStatement : public Statement{public:ComplexStatement(TextPosition pos) : Statement(pos){}};
-    class ControlStatement : public ComplexStatement{public:ControlStatement(TextPosition pos) : ComplexStatement(pos){}};
-    class CompoundStatement : public ComplexStatement{public:CompoundStatement(TextPosition pos) : ComplexStatement(pos){}};
+    class Statement           : public PTreeNode{
+        public:
+        using PTreeNode::PTreeNode;
+        virtual ~Statement() = 0;
+    };
+    class NSStatement         : public virtual Statement{using Statement::Statement;};
+    class SimpleStatement     : public Statement{using Statement::Statement;};
+    class CoreStatement       : public SimpleStatement{using Statement::Statement;};
+    class CompoundStatement   : public NSStatement{using Statement::Statement;};
+    class ControlStatement    : public NSStatement{using Statement::Statement;};
+
+    class CBControlStatement  : public NSStatement{using Statement::Statement;};
     
     typedef unique_ptr<Statement> pStatement;
     typedef vector<pStatement> StatementSeq;
     
     typedef unique_ptr<SimpleStatement> pSimpleStatement;
-    typedef vector<pSimpleStatement> SimpleStatementSeq;
+    typedef vector<pSimpleStatement> SimpleStatements;
     
+    typedef unique_ptr<NSStatement> pNSStatement;
     typedef unique_ptr<ControlStatement> pControlStatement;
+    typedef unique_ptr<CompoundStatement> pCompoundStatement;
+    typedef unique_ptr<CBControlStatement> pCBControlStatement;
 
-    typedef unique_ptr<ComplexStatement> pComplexStatement;
-    
-    class Label;
-    typedef unique_ptr<Label> pLabel;
-    typedef vector<pLabel> Labels;
-    
-    class SimpleBlock : public PTreeNode{
-    public:
-        pLabel label;
-        SimpleStatementSeq statements;
-        ControlStatement control;
-    };
-    typedef unique_ptr<SimpleBlock> pSimpleBlock;
-    typedef vector<pSimpleBlock> SimpleBlockSeq;
-    
-    typedef vector<pLocalVariable> Locals;
-    class ScopedSimpleBlocks : public PTreeNode{
-        Locals locals;
-        SimpleBlockSeq blocks;
-    };
-    typedef unique_ptr<ScopedSimpleBlocks> pScopedSimpleBlocks;
-    
-    class Block : public PTreeNode{
-    public:
-        Block(Labels&& labels, SimpleStatementSeq&& statements, pComplexStatement&& endStatement)
-            : labels(move(labels)), statements(move(statements)), endStatement(move(endStatement)){}
-        Block(pComplexStatement&& endStatement)
-            : endStatement(move(endStatement)){}
-        Labels labels;
-        SimpleStatementSeq statements;
-        pComplexStatement endStatement;
-    };
-    typedef unique_ptr<Block> pBlock;
-    typedef vector<pBlock> BlockSeq;
-    
-    class ScopedBlocks : public PTreeNode{
-    public:
-        Locals locals;
-        BlockSeq blocks;
-    };
-    typedef unique_ptr<ScopedBlocks> pScopedBlocks;
-    
     class Label : public PTreeNode{
     public:
         Label(pIdentifier&& id) : id(move(id)){}
         pIdentifier id;
     };
     typedef unique_ptr<Label> pLabel;
+    typedef vector<pLabel> Labels;
     
-    class PredicateStatement : public SimpleStatement{
+    class SBlock : public PTreeNode{
     public:
-        pExpression e;
-    protected:
-        PredicateStatement(TextPosition pos,pExpression&& e) : SimpleStatement(pos), e(move(e)){}
+        Labels            labels;
+        SimpleStatements  statements;
+        pNSStatement      control;
+        
+        SBlock(){}
+        SBlock(Labels&& ls, SimpleStatements&& ss, pNSStatement&& cs)
+            : labels(move(ls)),statements(move(ss)),control(move(cs)){}
+        SBlock(pNSStatement&& cs) : PTreeNode(pos), control(move(cs)){}
     };
+    typedef unique_ptr<SBlock> pSBlock;
+    typedef vector<pSBlock> SBlocks;
+    
+    class BlockStatement;
+    typedef unique_ptr<BlockStatement> pBlockStatement;
+    
+
+    class BlockStatement : public Statement{
+    public:
+        BlockStatement(TextPosition pos, SBlocks&& bs)
+        : Statement(pos), bs(move(bs)) {}
+        SBlocks bs;
+    };
+
+
+    class CBSBlock : public PTreeNode{
+    public:
+        CBSBlock(pLabel&& l, SimpleStatements&& ss, pCBControlStatement cs)
+            : label(move(l)), statements(move(ss)), control(move(cs)){}
+        pLabel               label;
+        SimpleStatements    statements;
+        pCBControlStatement control;
+    };
+    typedef unique_ptr<CBSBlock> pCBSBlock;
+    typedef vector<pCBSBlock> CBSBlocks;
+
+    class CBBlockStatement;
+    typedef unique_ptr<CBBlockStatement> pCBBlockStatement;
+    class CBBlockStatement : public Statement{
+    public:
+        CBBlockStatement(CBSBlocks&& bs)
+        : Statement(), bs(move(bs)) {}
+        CBSBlocks bs;
+    };
+    
+    class ScopedBlock : public PTreeNode{
+    public:
+        Locals locals;
+        pBlockStatement bs;
+    };
+    typedef unique_ptr<ScopedBlock> pScopedBlocks;
+    
+    class PredicateStatement : public CoreStatement{
+    public:
+        Attributes attributes;
+        pExpression e;
+        PredicateStatement(TextPosition pos,Attributes&& attributes,pExpression&& e) 
+        : CoreStatement(pos), attributes(move(attributes)), e(move(e)){}
+    };
+    typedef unique_ptr<PredicateStatement> pPredicateStatement;
+    
     class AssertStatement : public PredicateStatement{
     public:
-        AssertStatement(TextPosition pos, pExpression&& e) : PredicateStatement(pos,move(e)) {}
+        using PredicateStatement::PredicateStatement;
     };
     class AssumeStatement : public PredicateStatement{
     public:
-        AssumeStatement(TextPosition pos, pExpression&& e) : PredicateStatement(pos,move(e)) {}
+        using PredicateStatement::PredicateStatement;
     };
     
-    class HavocStatement : public SimpleStatement{
+    class HavocStatement : public CoreStatement{
     public:
-        HavocStatement(TextPosition pos, list<pVariable>&& vars) : SimpleStatement(pos), vars(move(vars)) {}
-        list<pVariable> vars;
+        HavocStatement(TextPosition pos, Identifiers&& ids) : CoreStatement(pos), ids(move(ids)) {}
+        Identifiers ids;
     };
 
-    class AssignLHS : public PTreeNode{};
+    // <editor-fold desc="Assignment">
+    class AssignLHS : public PTreeNode{using PTreeNode::PTreeNode;};
     class AssignLHSVar : public AssignLHS{
     public:
-        AssignLHSVar(pIdentifier&& id) : id(move(id)){}
+        AssignLHSVar(pIdentifier&& id) : AssignLHS(id->pos), id(move(id)){}
         pIdentifier id;
-    };
-    class MapSelect : public PTreeNode{
-    public:
-        MapSelect(vector<pExpression>&& indices) : indices(move(indices)){}
-        vector<pExpression> indices;
-    };
-    typedef unique_ptr<MapSelect> pMapSelect;
-    class AssignLHSMap : public AssignLHS{
-        AssignLHSMap(pIdentifier&& id, vector<pMapSelect>&& mss) 
-            : id(move(id)), mss(move(mss)){}
-        pIdentifier id;
-        vector<pMapSelect> mss;
     };
     typedef unique_ptr<AssignLHS> pAssignLHS;
+    typedef vector<pAssignLHS>    AssignLHSs;
+    
+    class MapSelect : public PTreeNode{
+    public:
+        MapSelect(TextPosition pos,Expressions&& indices) : PTreeNode(pos), indices(move(indices)){}
+        Expressions indices;
+    };
+    typedef unique_ptr<MapSelect> pMapSelect;
+    typedef vector<pMapSelect> MapSelects;
+    
+    class AssignLHSMap : public AssignLHS{
+    public:
+        AssignLHSMap(pIdentifier&& id, MapSelects&& mss) 
+            : AssignLHS(id->pos), id(move(id)), mss(move(mss)){}
+        pIdentifier id;
+        MapSelects mss;
+    };
+    typedef unique_ptr<AssignLHS> pAssignLHS;
+    typedef vector<pAssignLHS>    AssignLHSs;
+    
     class AssignStatement : public SimpleStatement{
     public:
-        AssignStatement(TextPosition pos, vector<pAssignLHS>&& lhss, vector<pExpression>&& rhss) 
+        AssignStatement(TextPosition pos, AssignLHSs&& lhss, Expressions&& rhss) 
              : SimpleStatement(pos), lhss(move(lhss)), rhss(move(rhss)) {}
-        vector<pAssignLHS> lhss;
-        vector<pExpression> rhss;
+        AssignLHSs  lhss;
+        Expressions rhss;
     };
+    // </editor-fold>
 
     class CallStatement : public SimpleStatement{
     public:
-        CallStatement(TextPosition pos, vector<pAssignLHS>&& lhss, pIdentifier&& procId, vector<pExpression>&& args) 
-            :  SimpleStatement(pos), lhss(move(lhss)), procId(move(procId)), args(move(args)) {}
-        vector<pAssignLHS> lhss;
+        CallStatement(TextPosition pos,  pIdentifier&& procId, Identifiers&& lhss, vector<pExpression>&& args, bool isFree = false, bool isAsync = false) 
+            :  SimpleStatement(pos), procId(move(procId)), lhss(move(lhss)), args(move(args)), isFree(isFree), isAsync(isAsync) {}
         pIdentifier procId;
-        vector<pExpression> args;
+        Identifiers lhss;
+        Expressions args;
+        bool isFree;
+        bool isAsync;
     };
+    typedef unique_ptr<CallStatement> pCallStatement;
+    typedef vector<pCallStatement> CallStatements;
 
-    class CallForallStatement : public SimpleStatement{
+    class ParallelCallStatement : public SimpleStatement{
     public:
-        CallForallStatement(TextPosition pos, pIdentifier&& procId, vector<pWExpression>&& args) 
-             : SimpleStatement(pos), procId(move(procId)), args(move(args)) {}
-        pIdentifier procId;
-        vector<pWExpression> args;
+        ParallelCallStatement(TextPosition pos,  Attributes&& attributes, CallStatements&& calls)
+            :  SimpleStatement(pos), attributes(move(attributes)), calls(move(calls)){}
+        Attributes attributes;
+        CallStatements calls;
     };
 
-    class SkipStatement : public SimpleStatement{public: SkipStatement(TextPosition pos) : SimpleStatement(pos){}};
-    
+    class YieldStatement : public SimpleStatement{
+    public:
+        YieldStatement(TextPosition pos) : SimpleStatement(pos){}
+    };
+
     class ITEStatement : public CompoundStatement{
     public:
-        ITEStatement(TextPosition pos, pWExpression&& cond, pStatement&& thenS, pStatement&& elseS = make_unique<SkipStatement>())
+        ITEStatement(TextPosition pos, pWExpression&& cond, pBlockStatement&& thenS)
+            : ITEStatement(pos,move(cond),move(thenS),nullptr){}
+        ITEStatement(TextPosition pos, pWExpression&& cond, pBlockStatement&& thenS, pBlockStatement&& elseS)
             : CompoundStatement(pos), cond(move(cond)), thenS(move(thenS)), elseS(move(elseS)){}
         pWExpression cond;
         pStatement   thenS;
         pStatement   elseS;
     };
+    typedef unique_ptr<ITEStatement> pITEStatement;
 
     class WhileStatement : public CompoundStatement{
     public:
-        WhileStatement(TextPosition pos, pWExpression&& cond, vector<SpecExpression>&& invariant, pStatement&& body)
+        WhileStatement(TextPosition pos, pWExpression&& cond, SpecExpressions&& invariant, pBlockStatement&& body)
             : CompoundStatement(pos), cond(move(cond)), invariant(move(invariant)), body(move(body)){}
-        pWExpression cond;
-        vector<SpecExpression> invariant;
-        pStatement   body;
+        pWExpression    cond;
+        SpecExpressions invariant;
+        pBlockStatement body;
     };
     typedef unique_ptr<WhileStatement> pWhileStatement;
 
     class BreakStatement : public ControlStatement{
     public:
-        BreakStatement(TextPosition pos, pLabel&& target) : ControlStatement(pos), target(move(target)){}
+        BreakStatement(TextPosition pos, pIdentifier&& target) : ControlStatement(pos), target(move(target)){}
         
-        pLabel target;
+        pIdentifier target;
     };
     typedef unique_ptr<BreakStatement> pBreakStatement;
 
-    class GotoStatement : public ControlStatement{
+    class GotoStatement : public ControlStatement, public CBControlStatement{
     public:
-        GotoStatement(TextPosition pos, vector<pLabel>&& targets) : ControlStatement(pos), targets(move(targets)){}
+        GotoStatement(TextPosition pos, Identifiers&& targets)
+            : ControlStatement(pos), targets(move(targets)){}
         
-        Labels targets;
+        Identifiers targets;
     };
-
+    typedef unique_ptr<GotoStatement> pGotoStatement;
+    
     class ReturnStatement : public ControlStatement{
     public:
         ReturnStatement(TextPosition pos) : ControlStatement(pos) {}
     };
     
+    class ReturnEStatement : public CBControlStatement{
+    public:
+        ReturnEStatement(TextPosition pos,pExpression&& e) : CBControlStatement(pos), e(move(e)) {}
+        pExpression e;
+    };
     // </editor-fold>
 
 }//namespace AST

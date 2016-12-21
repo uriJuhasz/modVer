@@ -7,6 +7,7 @@
 #include <string>
 #include <memory>
 #include <functional>
+#include <typeinfo>
 #include "frontend/boogie/ParseTree.h"
 
 using namespace frontend::boogie::ParseTree;
@@ -19,50 +20,64 @@ using std::make_unique;
 COMPILER BoogiePL
 
 /*--------------------------------------------------------------------------*/
-Program program;
-Parser(const std::basic_string<unsigned char>& buf)
-: Parser(new Scanner(buf.c_str(),buf.size())){
-	
-}
-void parse(){
-    BoogiePL();
-} 
+    Program program;
 
-static TextPosition toPos(const Token* t){ return TextPosition(t->line,t->col); } 
+    Parser(const std::basic_string<unsigned char>& buf)
+        : Parser(new Scanner(buf.c_str(),buf.size())){}
 
-static wstring toIdentifier(const wstring& s){
-    return (s[0]=='\\') ? s.substr(1) : s;
-}
+    void parse(){
+        BoogiePL();
+    }
 
-bool isLabel() {
-  return (la->kind == _ident && scanner->Peek()->kind == _colon );
-} 
+    static void parse(const std::basic_string<unsigned char>& input){
+        Parser parser(input);
+        parser.parse();
+    }
 
-bool isIdColon() {
-  return (la->kind == _ident && scanner->Peek()->kind == _colon );
-} 
+    void SemErr(const wstring& s) {
+        SemErr(s.c_str());
+        errDist = 0;
+    }
+    void SemErr(const string& s) {
+        SemErr(wstring(s.begin(),s.end()).c_str());
+        errDist = 0;
+    }
 
-bool isBVBound() {
-  if (la->kind != _digits)
-    return false;
-  if (scanner->Peek()->kind != _colon )
-    return false;
-  if (scanner->Peek()->kind != _digits )
-    return false;
-  return true;
-}
+    static TextPosition toPos(const Token* t){ return TextPosition(t->line,t->col); }
 
-bool isUnaryITEExpression() {
-  auto t = la;
-  while (t->kind==_neg || t->kind==_minus)
-    t=scanner->Peek();
-  return t->kind==_ifKW;
-}
+    static wstring toIdentifier(const wstring& s){
+        return (s[0]=='\\') ? s.substr(1) : s;
+    }
 
-typedef function< void(Attributes&&, pIdentifier&&, pType&&, pExpression&&) > ActionAITW;
-typedef function< void(              pIdentifier&&, pType&&, pExpression&&) > ActionITW;
-typedef function< void(              pIdentifier&&, pType&&               ) > ActionIT;
-typedef function< void(Attributes&&, pIdentifier&&, pType&&               ) > ActionAIT;
+    bool isLabel() {
+      return (la->kind == _ident && scanner->Peek()->kind == _colon );
+    }
+
+    bool isIdColon() {
+      return (la->kind == _ident && scanner->Peek()->kind == _colon );
+    }
+
+    bool isBVBound() {
+      if (la->kind != _digits)
+        return false;
+      if (scanner->Peek()->kind != _colon )
+        return false;
+      if (scanner->Peek()->kind != _digits )
+        return false;
+      return true;
+    }
+
+    bool isUnaryITEExpression() {
+      auto t = la;
+      while (t->kind==_not || t->kind==_minus)
+        t=scanner->Peek();
+      return t->kind==_ifKW;
+    }
+
+    typedef function< void(Attributes&&, pIdentifier&&, pType&&, pExpression&&) > ActionAITW;
+    typedef function< void(              pIdentifier&&, pType&&, pExpression&&) > ActionITW;
+    typedef function< void(              pIdentifier&&, pType&&               ) > ActionIT;
+    typedef function< void(Attributes&&, pIdentifier&&, pType&&               ) > ActionAIT;
 
 /*--------------------------------------------------------------------------*/
 CHARACTERS
@@ -106,7 +121,7 @@ TOKENS
 										| '0' '+' 'o' 'o' digit {digit} 'e' digit {digit}
 										| '0' '-' 'o' 'o' digit {digit} 'e' digit {digit} .
 
-  neg = '!'.
+  not = '!' | '\u00ac'.
   minus = '-'.
   ifKW = "if".
 
@@ -154,8 +169,8 @@ UserDefinedType<. Program& prog, Attributes&& attributes .>
   [ "=" TypeP<body> ]
   (. TypeParameters tParams;
      for (auto& pid : params) tParams.push_back(make_unique<TypeVariable>(move(pid)));
-     if (body) prog.addTypeDef(make_unique<TypeSynonymDef>(id,tParams,body));
-          else prog.addTypeDef(make_unique<TypeConstructorDef>(id,tParams) ); .)
+     if (body) prog.addTypeDef(make_unique<TypeSynonymDef>    (move(id),move(tParams),move(body)));
+          else prog.addTypeDef(make_unique<TypeConstructorDef>(move(id),move(tParams)) ); .)
 .
 
 /*------------------------------------------------------------------------*/
@@ -233,6 +248,7 @@ FunctionDef<. Scope& scope .>
     	pos, 
     	move(attributes), 
     	move(id),
+        move(typeParams),
     	move(argTypes),
     	move(resultType),
       move(argNames),
@@ -249,9 +265,9 @@ VarOrTypeAsType<. pType& type .>
     | TypeP<type>
 .
 
-VarOrTypeArgC<. Types& args, Identifiers& argNames .>
+VarOrTypeArgC<. Types& argTypes, Identifiers& argNames .>
 = (. pType type; pIdentifier id; .)
-    VarOrTypeArg<type,id> (. args.push_back(type); argNames.push_back(id); .)
+    VarOrTypeArg<type,id> (. argTypes.push_back(move(type)); argNames.push_back(move(id)); .)
 .
 
 VarOrTypeArg<. pType& type, pIdentifier& id .>
@@ -357,25 +373,25 @@ ImplSignature<. pProcSignature& sig .>
 ImplFormals<. FormalDir dir, Formals& formals .>
 = "("
   [ IdsTypeS<. [dir,&formals](auto&& id, auto&& type)
-      {formals.push_back(make_unique<Formal>(move(id),move(type),dir));} .> ]
+      {formals.push_back(make_unique<Formal>(Attributes(),move(id),move(type),pExpression(),dir));} .> ]
   ")"
 .
 
 ImplBody<. Program& prog, pIdentifier&& id, Attributes&& attributes, pProcSignature&& sig, pProcSpec&& spec .>
-= (. ScopedBlocks body; .) 
-  ScopedBlocksP<body>
+= (. pScopedBlock body = make_unique<ScopedBlock>(); .) 
+  ScopedBlocksP<*body>
   (. prog.addImplementation( make_unique<Implementation>(move(id), move(attributes), move(sig), move(spec), move(body))); .)
 .
 
-ScopedBlocksP<. ScopedBlocks& bs .>
+ScopedBlocksP<. ScopedBlock& b .>
 = "{"
-  { LocalVar<bs.locals> }
-  StmtList<bs.blocks> //eats up "}"
+  { LocalVar<b.locals> }
+  StmtList<b.bs> //eats up "}"
 .
 
 
 /*------------------------------------------------------------------------*/
-BoundVarsP<. BoundVars& vars .>
+BoundVarsP<. BoundVariables& vars .>
 = 
   AttrsIdsTypes<. [&vars](auto&& attrs, auto&& id, auto&& type){ 
     vars.push_back(make_unique<BoundVariable>(move(attrs),move(id),move(type))); } .>
@@ -464,15 +480,15 @@ TypeConstructor<. pType& type .>
 =(. pIdentifier id;
     Types       args;
  .)
-   IdentifierP<id> [TypeArgs<args>]   (. type = make_unique<UnresolvedType>(id->pos,id, args); .)
+   IdentifierP<id> [ TypeArgs<args> ]   (. type = make_unique<UnresolvedType>(id->pos,move(id), move(args)); .)
 .
 
-TypeArgs<. Types types .>
+TypeArgs<. Types& types .>
 = (. pIdentifier id;
      pType       type;  .)
   (
     ((  TypeAtom<type>    (. types.push_back(move(type)); .)
-      | IdentifierP<id>    (. types.push_back(make_unique<UnresolvedType>(id->pos,id,Types())); .)
+      | IdentifierP<id>    (. types.push_back(make_unique<UnresolvedType>(id->pos,move(id),Types())); .)
     )
     [ TypeArgs<types> ] )
   | MapTypeP<type>      (. types.push_back(move(type)); .)
@@ -489,13 +505,13 @@ MapTypeP<. pType& type .>
   [ TypeParams<typeParameters> ]
   "[" (. pos = toPos(t); .) [ TypesCS<arguments> ] "]"
   TypeP<result>
-  (. type = make_unique<MapType>(pos, typeParameters, arguments, result); .)
+  (. type = make_unique<MapType>(pos, move(typeParameters), move(arguments), move(result)); .)
 .
 
 
 TypeC<. Types& types .>
 = (. pType t; .)
-  TypeP<t>                 (. types.push_back(t); .)
+  TypeP<t>                 (. types.push_back(move(t)); .)
 .
 
 TypesCS<. Types& types .>
@@ -511,123 +527,135 @@ TypeParams<. TypeParameters& typeParams .>
 
 /*------------------------------------------------------------------------*/
 /* the StmtList also reads the final curly brace */
-StmtList<. BlockSeq& bs .>
-  = { BigBlock<bs> } "}" 
+StmtList<. pBlockStatement& bs .>
+= { (. Labels            labels;
+     SimpleStatements  cmds;
+     pNSStatement      endCmd;
+  .)
+    { IF(isLabel()) LabelC<labels> | ()}
+    { CmdC<cmds> }
+    [ NSCmd<endCmd> ]               (. bs->bs.push_back(make_unique<SBlock>(move(labels),move(cmds),move(endCmd))); .)
+  }
+    "}" 
 .
 
-BigBlock<. BlockSeq& bs .>
-= (. pLabel label;
-     SimpleStatementSeq cmds;
-     pComplexStatement  endCmd;
-  .)
-    ( IF(isLabel())
-       Label<label> | () )
-    { Cmd<cmds> }
-    ( StructuredCmd<endCmd> | TransferCmd<endCmd> )
-    (. bs.push_back(make_unique<Block>(label,cmds,endCmd)); .)
+LabelC<. Labels& labels .>
+= (. pLabel label; .) LabelP<label> (. labels.push_back(move(label)); .)
 .
 
-TransferCmd<. pControlStatement& ss .>
-= (. tc = dummyTransferCmd;
-     Token y;  List<IToken>/*!*/ xs;
-     List<String> ss = new List<String>();
+BlockStmt<. pBlockStatement& bs .>
+= "{" StmtList<bs>
+.
+
+NSCmd<. pNSStatement& s .>
+=   ControlCmd<s>
+  | StructuredCmd<s>
+.
+
+ControlCmd<. pNSStatement& cs .>
+=   GotoCmdNS<cs>
+  | ReturnCmd<cs>
+  | BreakCmd<cs>
+.
+
+ReturnCmd<. pNSStatement& cs .>
+= (. TextPosition pos; .)
+  "return" (. pos = toPos(t); .)
+  ";" (. cs = make_unique<ReturnStatement>(pos); .)
+.
+
+
+GotoCmdNS<. pNSStatement& cs .>
+= (. pGotoStatement cc; .) GotoCmd<cc> (. pControlStatement css = move(cc); cs = move(css); .)
+.
+
+GotoCmdCB<. pCBControlStatement& cs .>
+= (. pGotoStatement cc; .) GotoCmd<cc> (. cs = move(cc); .)
+.
+
+GotoCmd<. pGotoStatement& cs .>
+= (. TextPosition pos; Identifiers ids; .)
+  "goto"               (. pos = toPos(t); .)
+  IdentifiersCS<ids>   (. cs = make_unique<GotoStatement>(pos, move(ids)); .)
+  ";"
+.
+
+BreakCmd<. pNSStatement& c .>
+= (. TextPosition pos;
+     pIdentifier id;
   .)
-  ( "goto"             (. y = t; .)
-    IdentifiersCS<xs>     (. foreach(IToken/*!*/ s in xs){
-                            Contract.Assert(s != null);
-                            ss.Add(s.val); }
-                          tc = new GotoCmd(y, ss);
-                       .)
-  | "return"           (. tc = new ReturnCmd(t); .)
-  ) ";"
+  "break"                (. pos = toPos(t); .)
+  [ IdentifierP<id> ]      
+  ";"                  (. c = make_unique<BreakStatement>(pos, move(id)); .)
   .
 
-StructuredCmd<. pComplexStatement& cmd .>
+
+
+StructuredCmd<. pNSStatement& cmd .>
 =   IfCmd<cmd>
   | WhileCmd<cmd>
-  | BreakCmd<cmd>  
   .
 
-IfCmd<. pStatement& c .>
+IfCmd<. pNSStatement& c .>
 = (. TextPosition pos;
      pWExpression guard;
-     BlockSeq thn;
-     ITEStatement elseIf;
-     BlockSeq els;
+     pBlockStatement  thn;
+     pBlockStatement  els;
   .)
   "if"                       (. pos = toPos(t); .)
   Guard<guard>
   BlockStmt<thn>
-  [ "else"
-    ( IfCmd<elseIf>          (. els.push_back(elseIfOption = elseIf; .)
+  [ "else"                   (. pNSStatement elseIf; .)
+    ( IfCmd<elseIf>          (. SBlocks bs; bs.push_back(make_unique<SBlock>(move(elseIf))); els = make_unique<BlockStatement>(elseIf->pos, move(bs)); .)
     | BlockStmt<els>         
     )
   ]
-  (. ifcmd = new IfCmd(x, guard, thn, elseIfOption, elseOption); .)
+  (. c = make_unique<ITEStatement>(pos, move(guard), move(thn), move(els)); .)
 .
 
-BlockStmt<. BlockSeq& b .>
-= "{" StmtList<b>
-.
-
-WhileCmd<. pWhileStatement& c .>
+WhileCmd<. pNSStatement& c .>
 = (. TextPosition pos;
-     Token z;
      pWExpression guard;
      SpecExpressions invariants;
-     StmtList/*!*/ body;
-     QKeyValue kv = null;
+     pBlockStatement body;
   .)
   "while"             (. pos = toPos(t); .)
   Guard<guard>        
   {                   (. bool isFree = false; TextPosition pos2 = toPos(la); pExpression inv; .)
     [ "free"          (. isFree = true;  .) ]
-    "invariant"
+    "invariant"       (. Attributes attributes; .)
     AttributesP<attributes>
-    Expression<inv>   (. invariants.push_back(make_unique<SpecExpression>(pos2,move(inv),isFree,move(attributes)); .)
+    Expression<inv>   (. invariants.push_back(make_unique<SpecExpression>(pos2,isFree,move(inv),move(attributes))); .)
     ";"
   }
   BlockStmt<body>     (. c = make_unique<WhileStatement>(pos, move(guard), move(invariants), move(body)); .)
 .
 
 Guard<. pWExpression& e .>
-= (. pExpression ee .)
+= (. pExpression ee; .)
   "("
   ( "*"               (. e = make_unique<WildCardExpression>(toPos(t)); .)
-  | Expression<ee>    (. e = ee; .)
+  | Expression<ee>    (. e = move(ee); .)
   )
   ")"
   .
 
-BreakCmd<. pBreakStatement& c .>
-= (. TextPosition pos;
-     pIdentifier id;
-  .)
-  "break"                (. pos = toPos(t); .)
-  [ IdentifierP<id> ]      
-  ";"                  (. c = make_unique<BreakStatement>(pos, id); .)
-  .
-
 /*------------------------------------------------------------------------*/
 
-Cmd<. pSimpleStatement& c .>
-= (. IToken/*!*/ x; Expr/*!*/ e;
-     List<IToken>/*!*/ xs;
-     List<IdentifierExpr> ids;
-     c = dummyCmd;  label = null;
-     Cmd/*!*/ cn;
-     QKeyValue kv = null;
-  .)
- 
-//    Label<label>
-    AssignCmd<c>
+CmdC<. SimpleStatements& s .>
+= (. pSimpleStatement c; .)
+  SimpleCmd<c>             (. s.push_back(move(c)); .)
+.
+
+SimpleCmd<. pSimpleStatement& c .>
+=   AssignCmd<c>
   | PredicateCmd<c>
   | HavocCmd<c>
   | CallCmd<c>
   | ParCallCmd<c>
   | YieldCmd<c>
 .
-  
+
 PredicateCmd<. pSimpleStatement& c .>
 = (. TextPosition pos; 
      Attributes attributes;
@@ -636,31 +664,32 @@ PredicateCmd<. pSimpleStatement& c .>
   .)
   (   "assert"                       (. isAssert=true;      .) 
     | "assume"                       (. isAssert=false;     .)
-  )                                  (. pos = toTextPos(t); .)
+  )                                  (. pos = toPos(t); .)
   AttributesP<attributes>
   Proposition<e>    
-  ";"                                 (. c = isAssert ? new AssertCmd(pos, attributes, e) : new AssumeCmd(pos, attributes, e); .)
+  ";"                                 (. c = isAssert ? static_cast<pPredicateStatement>(make_unique<AssertStatement>(pos, move(attributes), move(e))) 
+                                                      : static_cast<pPredicateStatement>(make_unique<AssumeStatement>(pos, move(attributes), move(e))); .)
 .
 
 HavocCmd<. pSimpleStatement& c .>
 = (. TextPosition pos;
-     Identifiers ids 
+     Identifiers ids; 
   .)
-  "havoc"               (. pos = t; .)
-  IdentifiersCS<ids> ";"  (. c = new HavocCmd(x,ids); .)
+  "havoc"                 (. pos = toPos(t); .)
+  IdentifiersCS<ids> ";"  (. c = make_unique<HavocStatement>(pos,move(ids)); .)
   .
 
 YieldCmd<. pSimpleStatement& c .>
 = (. TextPosition pos; .)
-  "yield"               (. pos = t; .)
-  ";"                   (. c = new YieldCmd(pos); .)
+  "yield"               (. pos = toPos(t); .)
+  ";"                   (. c = make_unique<YieldStatement>(pos); .)
   .
 
 /*------------------------------------------------------------------------*/
 
-Label<. pLabel& label .>
+LabelP<. pLabel& label .>
 = (. pIdentifier id; .)
-  IdentifierP<id> ":" (. label = new Label(id); .)
+  IdentifierP<id> ":" (. label = make_unique<Label>(move(id)); .)
   .
 
 AssignCmd<. pSimpleStatement& c .>
@@ -669,91 +698,75 @@ AssignCmd<. pSimpleStatement& c .>
      TextPosition pos;                   
   .)
     AssignLHS<lhss> { "," AssignLHS<lhss> }
-    ":="                                   (. pos = toTextPos(t); .)
-    ExpressionCS<rhss>
-    ";"                                    (. cmd new AssignCmd(pos, lhss, rhss); .)
+    ":="                                   (. pos = toPos(t); .)
+    ExpressionsCS<rhss>
+    ";"                                    (. c = make_unique<AssignStatement>(pos, move(lhss), move(rhss)); .)
 .
 
-AssignLHS<. vector<pAssignLHS>& lhss .>
+AssignLHS<. AssignLHSs& lhss .>
 = (. pIdentifier id; 
-     pAssignLHS lhs;
+     MapSelects mss;
   .)
-    IdentifierP<id>         (. lhs = new SimpleAssignLhs(move(id)); .)
-    { MapAssignIndex<lhs> }
-    (. lhss.Add(lhs); .)
-    .
+    ( IdentifierP<id>
+      { AssignLHSMapP<mss> }
+    ) (. lhss.push_back((mss.empty()) ? static_cast<pAssignLHS>(make_unique<AssignLHSVar>(move(id)))
+                                      : static_cast<pAssignLHS>(make_unique<AssignLHSMap>(move(id),move(mss)))); .)
+.
 
-MapAssignIndex<. pAssignLHS& lhs .>
-= (. TextPosition pos;
-     Expressions indices;
-     pExpression e;
-  .)
-  "["                          (. pos = toTextPos(t); .)
-    [ ExpressionCS<indices> ]
-  "]"                          (. lhs = new MapAssignLhs(pos, lhs, indices); .)
+AssignLHSMapP<. MapSelects& mss .>
+= (.  TextPosition pos;
+      Expressions indices; .)
+  ( "["                          (. pos = toPos(t); .)
+    [ ExpressionsCS<indices> ]
+  "]" )                          (. mss.push_back(make_unique<MapSelect>(pos,move(indices))); .)
   .
 
 /*------------------------------------------------------------------------*/
-CallCmd<. pStatement& c .>
-= (. IToken x; 
+CallCmd<. pSimpleStatement& c .>
+= (. pCallStatement cc; .) CallCmdI<cc> (. c = move(cc); .).
+
+CallCmdI<. pCallStatement& c .>
+= (. TextPosition pos;
      bool isAsync = false;
      bool isFree = false;
-     QKeyValue kv = null;
-     c = null;
+     Attributes attributes;
   .)
-  [ "async"          (. isAsync = true;  .)
-  ]
-  [ "free"          (. isFree = true;  .)
-  ]
-  "call"                          (. x = t; .)
+  [ "async"          (. isAsync = true;  .) ]
+  [ "free"           (. isFree  = true;  .) ]
+  "call"             (. pos = toPos(t); .)
   AttributesP<attributes>
-  CallParams<isAsync, isFree, kv, x, c> (. .)
+  CallParams<c, pos, isAsync, isFree, attributes>
   .
 
-ParCallCmd<. pStatement& c .>
-= (. Contract.Ensures(Contract.ValueAtReturn(d) != null); 
-     IToken x; 
-     QKeyValue kv = null;
-	 Cmd c = null;
-     List<CallCmd> callCmds = new List<CallCmd>();
+ParCallCmd<. pSimpleStatement& pc .>
+= (. TextPosition pos;
+     Attributes attributes;
+     CallStatements cs;
   .)
-  "par"                          (. x = t; .)
+  "par"                              (. pos = toPos(t); .)
   AttributesP<attributes>
-  CallParams<false, false, kv, x, c> (. callCmds.Add((CallCmd)c); .) 
-  { "|" CallParams<false, false, kv, x, c> (. callCmds.Add((CallCmd)c); .) 
-  }
-  ";" (. d = new ParCallCmd(x, callCmds, kv); .)
+        CallParamsC<cs, pos, false, false, attributes> 
+  { "|" CallParamsC<cs, pos, false, false, attributes> }
+  ";" (. pc = make_unique<ParallelCallStatement>(pos,move(attributes),move(cs)); .)
   .
 
-CallParams<. bool isAsync, bool isFree, Attributes& attributes, pStatement& c .>
-= (. 
-    List<IdentifierExpr> ids = new List<IdentifierExpr>();
-    List<Expr> es = new List<Expr>();
-    Expr en;
-    IToken first; 
-    IToken p;
-	c = null;
+CallParamsC<. CallStatements& cs, TextPosition pos, bool isAsync, bool isFree, Attributes& attributes .>
+= (. pCallStatement c; .)
+  CallParams<c,pos,isAsync,isFree,attributes> (. cs.push_back(move(c)); .)
+.
+
+CallParams<. pCallStatement& c, TextPosition pos, bool isAsync, bool isFree, Attributes& attributes .>
+= (. pIdentifier mId;
+     Expressions args;
+     Identifiers lhss;
   .)
-  IdentifierP<first>
-    ( "("
-      [ Expression<en>       (. es.Add(en); .)
-        { "," Expression<en> (. es.Add(en); .)
-        }
-      ]
-      ")"                         (. c = new CallCmd(x, first.val, es, ids, kv); ((CallCmd) c).IsFree = isFree; ((CallCmd) c).IsAsync = isAsync; .)
-    |
-                                  (. ids.Add(new IdentifierExpr(first, first.val)); .)
-      [ "," IdentifierP<p>  (. ids.Add(new IdentifierExpr(p, p.val)); .)
-        { "," IdentifierP<p>  (. ids.Add(new IdentifierExpr(p, p.val)); .)
-        }
-      ] ":="
-      IdentifierP<first> "("
-      [ Expression<en>       (. es.Add(en); .)
-        { "," Expression<en> (. es.Add(en); .)
-        }
-      ]
-      ")"                         (. c = new CallCmd(x, first.val, es, ids, kv); ((CallCmd) c).IsFree = isFree; ((CallCmd) c).IsAsync = isAsync; .)
-    )
+  IdentifierP<mId>
+    ( "(" [ ExpressionsCS<args> ] ")" 
+    |                                 (. lhss.push_back(move(mId));  .)
+      [ "," IdentifiersCS<lhss> ]
+      ":="
+      IdentifierP<mId> "(" [ ExpressionsCS<args> ] ")" 
+    ) (. c = make_unique<CallStatement>(pos, move(mId), move(lhss), move(args), isFree, isAsync); .)
   .
 
 /*------------------------------------------------------------------------*/
@@ -778,13 +791,13 @@ Proposition<. pExpression& e .>
   = Expression<e>
 .
 
-ExpressionCS<. Expressions& es.>
-= ExpressionC<e> { "," ExpressionC<e> }
+ExpressionsCS<. Expressions& es.>
+= ExpressionC<es> { "," ExpressionC<es> }
 .
 
 ExpressionC<. Expressions& es.>
-= (. pExpression e .)
-  Expression<e> (. es.push_back(e) .)
+= (. pExpression e; .)
+  Expression<e> (. es.push_back(move(e)); .)
 .
 
 Expression<. pExpression& e .>
@@ -795,9 +808,10 @@ Expression<. pExpression& e .>
 
 ExpressionR<. pExpression& e0 .>
 = (. TextPosition pos; 
-     pExpression e1 .)
+     pExpression e1;
+ .)
   EquivOp                (. pos = toPos(t); .)
-  ImpliesExpression<e1>  (. e0 = new Expression( pos, OpC::equiv(pos), e0, e1 ) .)
+  ImpliesExpression<e1>  (. e0 = FAExpression::make( OpC::equiv(pos), move(e0), move(e1) ); .)
   .
 
 EquivOp = "<==>" | '\u21d4'.
@@ -806,18 +820,16 @@ EquivOp = "<==>" | '\u21d4'.
 /*------------------------------------------------------------------------*/
 ImpliesExpression<. pExpression& e0 .>
 // = "ab" LogicalExpression<e0> "ba".
-= (. TextPosition pos;
-     pExpression e1; .)
-  LogicalExpression<e0>
+= LogicalExpression<e0>
   [ ImpliesExpressionR<e0> | ExpliesExpressionR<e0> ]
 .
 
 ImpliesExpressionR<. pExpression& e0 .>
-=   (. TextPos p;
+=   (. TextPosition pos;
        pExpression e1; .)
     /* recurse because implication is right-associative */
     ImpliesOp               (. pos = toPos(t); .)
-    ImpliesExpressionRR<e1> (. e0 = Expression::make(OpC::implies(pos), e0, e1); .)
+    ImpliesExpressionRR<e1> (. e0 = FAExpression::make(OpC::implies(pos), move(e0), move(e1)); .)
 .
 
 ImpliesExpressionRR<. pExpression& e1 .>
@@ -832,10 +844,11 @@ ExpliesExpressionR<. pExpression& e0 .>
 .
 
 ExpliesExpressionRR<. pExpression& e0 .>
-=(. TextPos p;
-    pExpression e1; .)
-  ExpliesOp               (. pos = toPos(t) .)
-  LogicalExpression<e1>   (. e0 = Expression::make(OpC::explies(pos), e0, e1); .)
+=(. TextPosition pos;
+    pExpression e1; 
+ .)
+  ExpliesOp               (. pos = toPos(t); .)
+  LogicalExpression<e1>   (. e0 = FAExpression::make(OpC::explies(pos), move(e0), move(e1)); .)
 .
 
 ExpliesOp = "<==" | '\u21d0'.
@@ -851,10 +864,10 @@ LogicalExpressionAnd<pExpression& e>
 .
 
 LogicalExpressionAndR<pExpression& e0>
-  = (. TextPos p;
+  = (. pOperator op;
        pExpression e1; .)
-  AndOp                    (. pos = toPos(t); .)
-  RelationalExpression<e1> (. e0 = Expression::make(Operation::And,e0,e1); .)
+  AndOp                    (. op = OpC::andOp(toPos(t)); .)
+  RelationalExpression<e1> (. e0 = FAExpression::make(move(op),move(e0),move(e1)); .)
 .
 
 LogicalExpressionOr<pExpression& e>
@@ -862,10 +875,10 @@ LogicalExpressionOr<pExpression& e>
 .
 
 LogicalExpressionOrR<pExpression& e0>
-  = (. TextPos p;
+  = (. pOperator op;
        pExpression e1; .)
-  OrOp                     (. pos = toPos(t); .)
-  RelationalExpression<e1> (. e0 = Expression::make(Operation::Or,e0,e1); .)
+  OrOp                     (. op = OpC::orOp(toPos(t)); .)
+  RelationalExpression<e1> (. e0 = FAExpression::make(move(op),move(e0),move(e1)); .)
 .
 
 
@@ -874,56 +887,59 @@ OrOp = "||" | '\u2228'.
 
 /*------------------------------------------------------------------------*/
 RelationalExpression<. pExpression& e0 .>
-= (. TextPosition pos;
-     pOperation op;
-     pExpression e1 .)
+= (. pOperator op;
+     pExpression e1;
+  .)
   BvTerm<e0>
-  [ RelOp<pos,op> BvTerm<e1>            (. e0 = Expression::make(pos,op,e0,e1); .)  ]
+  [ RelOp<op> BvTerm<e1>            (. e0 = FAExpression::make(move(op),move(e0),move(e1)); .)  ]
 .
 
-RelOp<. TextPosition& pos, pOperator& op .>
+RelOp<. pOperator& op .>
 =                  
-  ( "=="               (. op = Operation::Eq; .)
-  | "<"                (. op = Operation::LT; .)
-  | ">"                (. op = Operation::GT; .)
-  | ( "<=" | '\u2264') (. op = Operation::LE; .)
-  | ( ">=" | '\u2265') (. op = Operation::GE; .)
-  | ("!=" | '\u2260')  (. op = Operation::NE; .)
-  | "<:"               (. op = Operation::Subtype; .)
-  ) (. pos = topPos(t) .)
+   "=="                (. op = OpC::eq(toPos(t)); .)
+  | "<"                (. op = OpC::lt(toPos(t)); .)
+  | ">"                (. op = OpC::gt(toPos(t)); .)
+  | ( "<=" | '\u2264') (. op = OpC::le(toPos(t)); .)
+  | ( ">=" | '\u2265') (. op = OpC::ge(toPos(t)); .)
+  | ("!=" | '\u2260')  (. op = OpC::ne(toPos(t)); .)
+  | "<:"               (. op = OpC::subType(toPos(t)); .)
+  
  .
 
 /*------------------------------------------------------------------------*/
 BvTerm<. pExpression& e0 .>
-= (. TextPosition pos; .)
+= (. pOperator op;
+     pExpression e1;
+  .)
   Term<e0>
-  { "++"                  (. pos = toPos(t); pExpression e1; .)
-    Term<e1>              (. e0 = Expression::make(pos, Operation::BVConcat, e0, e1); .)
+  { "++"                  (. op = OpC::bvConcat(toPos(t)); .)
+    Term<e1>              (. e0 = FAExpression::make(move(op), move(e0), move(e1)); .)
   }
 .
 
 
 /*------------------------------------------------------------------------*/
 Term<. pExpression& e0 .>
-= (. TextPosition pos; pExpression e1; .)
+= (. pExpression e1; 
+     pOperator   op;
+  .)
   Factor<e0>
-  { AddOp<x, op>
-    Factor<e1>      (. e0 = Expr.Binary(x, op, e0, e1); .)
+  { AddOp<op>
+    Factor<e1>      (. e0 = FAExpression::make(move(op), move(e0), move(e1)); .)
   }
 .
 
-AddOp<. TextPosition& pos, pOperator& op .>
+AddOp<. pOperator& op .>
 =                  
-  ( "+"            (. op = Operation::Add; .)
-  | "-"            (. op = Operation::Sub; .)
-  )                (. pos = toPos(t) .)
+    "+"            (. op = OpC::add(toPos(t)); .)
+  | "-"            (. op = OpC::sub(toPos(t)); .)
   .
 
 /*------------------------------------------------------------------------*/
 Factor<. pExpression& e0 .>
 = (. pOperator op; pExpression e1; .)
   Power<e0>
-  { MulOp<op> Power<e1> (. e0 = Expr.Binary(x, op, e0, e1); .) }
+  { MulOp<op> Power<e1> (. e0 = FAExpression::make(move(op), move(e0), move(e1)); .) }
 .
 
 MulOp<. pOperator& op .>
@@ -940,27 +956,27 @@ Power<. pExpression& e0 .>
   UnaryExpression<e0>
   [ /* recurse because exponentation is right-associative */
     "**"           (. op = OpC::pow(toPos(t)); .)
-    Power<e1>      (. e0 = Expression::make(pos, Operation::Pow, e0, e1); .)
+    Power<e1>      (. e0 = FAExpression::make(move(op), move(e0), move(e1)); .)
   ]
   .
 
 /*------------------------------------------------------------------------*/
 UnaryExpression<. pExpression& e .>
 = (. TextPosition pos; pOperator op; .)
-    UnaryOp<op> UnaryExpression<e>  (. e = FAExpression::make(op,{e}); .)
+    UnaryOp<op> UnaryExpression<e>  (. e = FAExpression::make(move(op),move(e)); .)
   | CoercionExpression<e>
 .
 
 UnaryITEExpression<. pExpression& e .>
-= (. TextPosition pos; pOperator op; .)
-    UnaryOp<pos,op> UnaryITEExpression<e>  (. e = FAExpression::make(op,{e}); .)
+= (. pOperator op; .)
+    ( UnaryOp<op> UnaryITEExpression<e>  (. e = FAExpression::make(move(op),move(e)); .) )
   | IfThenElseExpression<e>
 .
 
 UnaryOp<. pOperator& op .>
 =                  
-  ( "-"                (. op = OpC::minus(toPos(t)); .)
-  | ( "!" | '\u00ac' ) (. op = OpC::neg  (toPos(t)); .)
+  ( minus (. op = OpC::minus(toPos(t)); .)
+  | not   (. op = OpC::notOp(toPos(t)); .)
   )                    
 .
 
@@ -978,7 +994,7 @@ CoercionExpression<. pExpression& e .>
      pType type;
     .)
   ArrayExpression<e> 
-  { ":" (. pos = toPos(t); .) TypeP<type> (. e = Expression::makeCast(pos,e,t); .) }
+  { ":" (. pos = toPos(t); .) TypeP<type> (. e = FAExpression::make(make_unique<CastOp>(pos,move(type)),move(e)); .) }
 .
 
 /*------------------------------------------------------------------------*/
@@ -988,7 +1004,7 @@ ArrayExpression<. pExpression& e .>
 .
 
 ArrayExpressionR<. pExpression& e .>
-= "["        (. TextPosition pos = toPos(t); .)
+= "["                                       (. TextPosition pos = toPos(t); .)
       [   IF (isBVBound()) BvBoundP<pos,e>
         | MapReadOrWrite<pos,e> 
       ]
@@ -999,67 +1015,67 @@ MapReadOrWrite<. TextPosition pos, pExpression& e .>
 = (. Expressions  args;
      pOperator    op = OpC::mapRead(pos); 
   .)
-  ( ( ExpressionCS<args> [ MapWrite<pos,op,args> ] )
-    | MapWrite<pos,op,args> 
-  )                                                  (. e = Expression::make(op,args); .)
+  ( ( ExpressionsCS<args> [ MapWrite<op,args> ] )
+    |                       MapWrite<op,args> 
+  )                                                  (. e = FAExpression::make(move(op),move(args)); .)
 .
         
-MapWrite<. TextPosition pos, pOperator& op, Expressions& es .>
-  =  ":="                  (. op = OpC::mapWrite(pos); .)  
+MapWrite<. pOperator& op, Expressions& args .>
+  =  ":="                  (. op = OpC::mapWrite(toPos(t)); .)  
       ExpressionC<args> 
 .
 
 BvBoundP<. TextPosition pos, pExpression& e .>
-= (. pExpression& l,h; .)
-  NatE<l> ":" NatE<h> (. e = FAExpression::make(OpC::bvSelect(pos), l, h ); .)
+= (. pExpression l,h; .)
+  NatE<l> ":" NatE<h> (. e = FAExpression::make(OpC::bvSelect(pos), move(l), move(h) ); .)
 .
 
 /*------------------------------------------------------------------------*/
 AtomExpression<. pExpression& e .>
 =   LiteralExpression<e>
-  | FAExpression<e>
-  | OldExpression<e>
+  | FAExpressionP<e>
+  | OldExpressionP<e>
   | CastExpression<e>
   | BinderOrParenExpression<e>
 //  | IfThenElseExpression<e>
-  | CodeExpression<e>
+  | CodeExpressionP<e>
 .
 
 LiteralExpression<. pExpression& e .>
-=   BooleanLiteralExpression<e>
+=   BooleanLiteralExpressionP<e>
   | NatE<e>
   | Dec<e>            
   | FloatE<e>
   | BvLit<e>
 .
 
-BooleanLiteralExpression<. pExpression& e .>
-=   "false"           (. e = new LiteralExpression(toPos(t), false); .)
-  | "true"            (. e = new LiteralExpression(toPos(t), true); .)
+BooleanLiteralExpressionP<. pExpression& e .>
+=   "false"           (. e = make_unique<BooleanLiteralExpression>(toPos(t), false); .)
+  | "true"            (. e = make_unique<BooleanLiteralExpression>(toPos(t), true); .)
 .
-FAExpression<. pExpression& e .>
+FAExpressionP<. pExpression& e .>
 = (. Expressions args;
-     pIdentifierExpression ide;
+     pVariableExpression ide;
      pIdentifier id; 
   .)
-  IdentifierExpression<ide>    (. id = ide->identifier->clone(); e = move(ide) .)
-    [ "(" ExpressionCS<args> ")"  (. e = new FAExpression(e.pos, new FunctionCall(id), move(args)); .) ]
+  IdentifierExpressionP<ide>      (. id = ide->id->clone(); e = move(ide); .)
+  [ "(" ExpressionsCS<args> ")"  (. e = FAExpression::make(UserDefinedOp::make(move(id)), move(args)); .) ]
 .
 
-OldExpression<. pExpression& e .>
+OldExpressionP<. pExpression& e .>
 = (.  TextPosition pos; .)
   "old"                    (. pos = toPos(t); .)
-    "(" Expression<e> ")"    (. e = new OldExpression(pos, e); .)
+  "(" Expression<e> ")"    (. e = make_unique<OldExpression>(pos, move(e)); .)
 .
 
 BinderOrParenExpression<. pExpression& e .>
 = (. TextPosition pos;
      Binder b;
   .)
-  "(" 
-        Expression<e>                 (. if (e is BvBounds) this.SemErr("parentheses around bitvector bounds are not allowed"); .)
-      | ( BinderP<pos,binder> QuantifierBody<pos,binder,e> )
-   ")"
+  ("(" 
+      (  Expression<e>                 //(. if (typeid(e)==typeid(BvBounds)) this->SemErr("parentheses around bitvector bounds are not allowed"); .)
+      | ( BinderP<pos,b> QuantifierBody<pos,b,e> ) )
+   ")")
 .
 
 BinderP<. TextPosition& pos, Binder& binder .>
@@ -1071,9 +1087,8 @@ BinderP<. TextPosition& pos, Binder& binder .>
 .
 
 QuantifierBody<. TextPosition pos, Binder binder, pExpression& e .>
-= (. TextPosition pos2;
-     TypeParameters  typeVars;
-     BoundVars       vars;
+= (. TypeParameters  typeVars;
+     BoundVariables  vars;
      Attributes      attributes;
      Triggers        triggers;
      pExpression     ie;                 .)
@@ -1083,7 +1098,7 @@ QuantifierBody<. TextPosition pos, Binder binder, pExpression& e .>
     QSep
     AttributesAndTriggers<attributes,triggers>
     Expression<ie>
-  ) (. e = new BinderExpression(pos, binder, move(attributes), move(triggers), move(typeVars), move(vars), move(ie)); .)
+  ) (. e = make_unique<QExpression>(pos, binder, move(attributes), move(triggers), move(typeVars), move(vars), move(ie)); .)
   .
 
 Forall = "forall" | '\u2200'.
@@ -1093,46 +1108,45 @@ QSep = "::" | '\u2022'.
 
 
 CastExpression<. pExpression& e .>
-= (. CastOperation op.)
-    ("int" |               (. func = CastOperation::make(Integer);  .)
-     "real"                (. func = CastOperation::make(Rational); .) )
-  "(" Expression<e> ")"    (. e = Expression::make(op,e); .)
+= (. pOperator op; .)
+    ("int" |               (. op = make_unique<CastOp>(toPos(t),make_unique<IntegerType>(toPos(t)));  .)
+     "real"                (. op = make_unique<CastOp>(toPos(t),make_unique<RationalType>(toPos(t))); .) )
+  "(" Expression<e> ")"    (. e = FAExpression::make(move(op),move(e)); .)
 .
 
 
-CodeExpression<. pExpression& e .>
+CodeExpressionP<. pExpression& e .>
 = (. TextPosition pos;
-     Locals locals;
-     list<Block>    blocks;   .)
+     Locals       locals;
+     CBSBlocks    bs;   
+  .)
   "|{"   (. pos = toPos(t); .)
-    { LocalVar<locals> } SpecBlock<blocks> { SpecBlock<blocks> } 
-  "}|" (. e = new CodeExpression(pos, locals, blocks); .)
+    { LocalVar<locals> } { CBSBlockP<bs> } 
+  "}|" (. e = make_unique<CodeExpression>(pos, move(locals), make_unique<CBBlockStatement>(move(bs))); .)
   .
 
-SpecBlock<. list<Block>& blocks .>
-= (. pIdentifier        id;
-     SimpleStatementSeq commands;
-     TextPosition       pos2;
-     Identifiers        nexts;
-     pBlock             b;
-
-
-     IToken label;
-     List<Cmd> cs = new List<Cmd>();
-     List<IToken>/*!*/ xs;
-     List<String> ss = new List<String>();
-     b = dummyBlock;
-     Expr/*!*/ e;
+CBSBlockP<. CBSBlocks& bs .>
+= (. pLabel              l;
+     SimpleStatements    cs;
+     pCBControlStatement cc;
   .)
-  IdentifierP<id> ":"
-  { Cmd<cs> }
-  ( "goto"                      (. pos2 = toPos(t); .)
-    IdentifiersCS<nexts>        (. b = new Block(id, cs, new GotoCmd(pos2,nexts)) .)
-  | "return"                    (. pos2 = toPos(t); .)
-    Expression<e>               (. b = new Block(id, cs, new ReturnExprCmd(pos2,e)); .)
-  ) (. blocks.push_back(move(b)) .)
+  LabelP<l>
+  { CmdC<cs> }
+  CBControlCmd<cc>
+  (. bs.push_back(make_unique<CBSBlock>(move(l),move(cs),move(cc))); .)
   ";"
   .
+
+CBControlCmd<. pCBControlStatement& c .>
+=   GotoCmdCB<c>
+  | ReturnECmd<c>
+.
+ReturnECmd<. pCBControlStatement& cs .>
+= (. TextPosition pos; pExpression e; .)
+  "return" (. pos = toPos(t); .)
+  Expression<e>
+  ";" (. cs = make_unique<ReturnEStatement>(pos,move(e)); .)
+.
 
 AttributesP<. Attributes& attributes .>
 = 
@@ -1140,43 +1154,48 @@ AttributesP<. Attributes& attributes .>
 .
 
 AttributesAndTriggers<. Attributes& attributes, Triggers& triggers .>
-= (. attributes = new Attributes(); triggers = new Triggers() .)
-  { "{" (AttributeI<*attributes> | TriggerI<*triggers>) "}" }
+= 
+  { "{" (AttributeI<attributes> | TriggerP<triggers>) "}" }
 .
 
-TriggerI<. Triggers& triggers .> 
-= (. pTrigger trigger = new Trigger() .)
-    ExpressionCS<trigger.expressions> (. triggers.push_back(move(trigger)); .)
+TriggerP<. Triggers& triggers .> 
+= (. pTrigger trigger = make_unique<Trigger>(); .)
+    ExpressionsCS<. trigger->es .> (. triggers.push_back(move(trigger)); .)
 .
 
 AttributeI<. Attributes& attributes .> 
-= (. pAttribute attribute(make_unique<Attribute>()) .)
-    ":" IdentifierP<attribute.id>                     
-        [       AttributeParameter<attribute.params>
-          { "," AttributeParameter<attribute.params> }
-        ]       (. attributes.push_back(move(attribute)).)
+= (. pAttribute attribute(make_unique<Attribute>()); .)
+    ":" IdentifierP<. attribute->id .>
+        [       AttributeParameter<. attribute->params .>
+          { "," AttributeParameter<. attribute->params .> }
+        ]       (. attributes.push_back(move(attribute)); .)
 .  //Boogie takes { :nopats Expression } as a dis-unification constraint
 
 AttributeParameter<. vector<pAttributeParam>& params .>
 = (. pExpression e; .)
-  ( string            (. params.push_back(new     StringAttributeParam( t, t.val.sub_string(1, t.val.Length-2) ); .)
-  | Expression<e>     (. params.push_back(new ExpressionAttributeParam( e )); .)
+  ( (. wstring s; .) StringP<s>  (. params.push_back(make_unique<StringAttributeParam>    ( toPos(t), s )); .)
+  | Expression<e>                (. params.push_back(make_unique<ExpressionAttributeParam>( move(e) )); .)
   )
 .
 
+StringP<. wstring& s .>
+= string (. s = t->val+1; s = s.substr(0,s.length()-1); .)
+.
+
 IfThenElseExpression<. pExpression& e .>
-= (. Token tok;
-     pExpression e0, e1, e2; .)
-  "if" (. tok = t; .) Expression<e0> "then" Expression<e1> "else" Expression<e2>
-  (. e = new FAExpression(tok, new IfThenElse(tok), new List<Expr>{ e0, e1, e2 }); .)
+= (. pOperator op;
+     pExpression e0, e1, e2; 
+  .)
+  "if" (. op = OpC::ite(toPos(t)); .) Expression<e0> "then" Expression<e1> "else" Expression<e2>
+  (. e = FAExpression::make(move(op), move(e0), move(e1), move(e2)); .)
 .
 
 
 
 /*------------------------------------------------------------------------*/
-IdentifierExpression<. pExpression& e .> = 
-    (. pIdentifier id .)
-    IdentifierP< id >  (. e = make__unique<IdentifierExpression>(id); .)
+IdentifierExpressionP<. pVariableExpression& e .> = 
+    (. pIdentifier id; .)
+    IdentifierP<id>  (. e = make_unique<VariableExpression>(move(id)); .)
 .
 
 IdentifierP<. pIdentifier& id .> = 
@@ -1186,16 +1205,16 @@ IdentifierP<. pIdentifier& id .> =
 /*------------------------------------------------------------------------*/
 NatE<. pExpression& e .>
 = (. TextPosition pos; Integer n; .)
-  Nat<pos,n>  (. e = make_unique<LiteralExpression>(pos,n); .)
+  Nat<pos,n>  (. e = make_unique<LiteralExpressionC<Integer>>(pos,move(n)); .)
   .
 
 Nat<. TextPosition& pos, Integer& n .>
 =
   digits
   (. try {
-       n = Integer(t.val);
-     } catch (std::runtime_exception&) {
-       this.SemErr("incorrectly formatted number");
+       n = common::string2Integer(t->val);
+     } catch (std::exception&) {
+       this->SemErr("incorrectly formatted number");
        n = 0;
      }
   .)
@@ -1203,15 +1222,15 @@ Nat<. TextPosition& pos, Integer& n .>
 
 /*------------------------------------------------------------------------*/
 Dec<. pExpression& le .>
-= (. string s = ""; .)
-  (   decimal     (. s = t.val; .)
-    | dec_float   (. s = t.val; .)
+= (. wstring s; Integer n; .)
+  (   decimal     (. s = t->val; .)
+    | dec_float   (. s = t->val; .)
   )
   (. try {
-       n = BigDec.FromString(s);
-     } catch (FormatException) {
-       this.SemErr("incorrectly formatted number");
-       n = BigDec.ZERO;
+       n = common::string2Integer(s);
+     } catch (std::exception&) {
+       this->SemErr(L"incorrectly formatted number " + s);
+       n = 0;
      }
   .)
   .
@@ -1221,39 +1240,33 @@ BvLit<. pExpression& le .>
 =
   bvlit
   (.
-     string s = t.val;
-     auto pos = s.find("bv");
+     wstring s = t->val;
+     auto pos = s.find(L"bv");
      assert(pos>=0);
-     string a = s.substring(0,pos);
-     string b = s.substring(pos + 2);
-     Integer n;
      try {
-       n = Integer(a);
-       m = Integer(b);
-     } catch (std::runtime_exception& ) {
-       this.SemErr("incorrectly formatted bitvector");
-       n = 0;
-       m = 0;
+       auto val   = common::string2Integer(s.substr(0,      pos               ));
+       auto nbits = common::string2Int32  (s.substr(pos + 2,s.length()-(pos+2)));
+       le = make_unique<BVLiteralExpression>(toPos(t), BVConstant(nbits,move(val)));
+     } catch (std::exception& ) {
+       this->SemErr("incorrectly formatted bitvector");
      }
-    le = new LiteralExpression(toTextPos(t), new BitVectorLiteral(n,m));
   .)
   .
 
-FloatE<. pExpression& le .> = 
-(. Rational r; TextPosition pos .)
-Float<r> (. return new LiteralExpression(pos,r); .)
+FloatE<. pExpression& le .>
+= (. Float f; 
+     TextPosition pos; 
+  .)
+  FloatP<f,pos> (. le = make_unique<LiteralExpressionC<Float>>(pos,move(f)); .)
 .
 
-Float<. Rational& r, TextPosition& pos .>
-= (. string s = ""; .)
-  (
-    float   (. s = t.val; pos = toTextPos(t); .)
-  )
+FloatP<. Float& f, TextPosition& pos .>
+= (. wstring s; .)
+  float   (. s = t->val; pos = toPos(t); .)
   (. try {
-       r = Rational(s);
-     } catch (std::runtime_exception& e) {
-       this.SemErr("incorrectly formatted floating point, " + e.Message);
-       r = 0;
+       f = string2Float(s);
+     } catch (std::exception& e) {
+       this->SemErr(L"incorrectly formatted floating point number " + s);
      }
   .)
   .

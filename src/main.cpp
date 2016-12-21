@@ -93,6 +93,7 @@ int parseBoogieFile(const string& boogieFileName){
 
     cout << "I: Reading file" << endl;
     std::basic_string<unsigned char> input(
+//    std::wstring input(
         (std::istreambuf_iterator<char>(boogieFile) ),
         (std::istreambuf_iterator<char>()));
     cout << "  I: Total " << input.size() << " bytes" << endl;
@@ -103,7 +104,7 @@ int parseBoogieFile(const string& boogieFileName){
     }
 
     cout << "I: Parsing" << endl;
-    frontend::boogie::parser::parse(input);
+    frontend::boogie::parser::Parser::parse(input);
 
     cout << "I: Closing Boogie file \"" << boogieFileName << "\"" << endl;
     return 0;

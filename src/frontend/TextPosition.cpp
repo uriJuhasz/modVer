@@ -9,7 +9,6 @@
 #include <string>
 
 namespace frontend {
-	TextPosition TextPosition::NoPos = TextPosition(-1,-1);
 	TextPosition::operator std::string() const {
 		return "(" + std::to_string(row) + "," + std::to_string(col) + ")";
 	}
