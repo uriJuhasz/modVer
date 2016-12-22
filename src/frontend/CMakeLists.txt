@@ -19,6 +19,7 @@ add_custom_command(
 )
 
 
+
 list(APPEND FRONTEND_SOURCES ${COCO_OUTPUTS}
     TextPosition.cpp TextPosition.h boogie/ParseTree.h boogie/ParseTree.cpp
 )
@@ -26,3 +27,5 @@ list(APPEND FRONTEND_SOURCES ${COCO_OUTPUTS}
 include_directories (${CMAKE_BINARY_DIR})
 
 add_library(frontend STATIC ${FRONTEND_SOURCES})
+
+target_link_libraries(frontend common)

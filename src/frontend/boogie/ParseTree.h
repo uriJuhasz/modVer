@@ -34,6 +34,14 @@ namespace ParseTree{
             out.push_back(e->clone());
         return move(out);
     }
+
+
+    template<typename C,typename E, unique_ptr<E> (E::*cloneM)() const> C cloneCM(const C& in){
+        C out;
+        for (const auto& e : in)
+            out.push_back(((*e).*cloneM)());
+        return move(out);
+    }
     // </editor-fold>
 
     // <editor-fold desc="ParseTreeNode">
@@ -242,11 +250,11 @@ namespace ParseTree{
     	pType       type;
         int flags;
         
-        bool isGlobal(){return flags&GLOBAL; }
-        bool isInput() {return flags&INPUT; }
-        bool isOutput(){return flags&OUTPUT; }
-        bool isConstant(){return flags&CONSTANT; }
-        bool isBound(){return flags&BOUND; }
+        bool isGlobal()  const {return flags&GLOBAL; }
+        bool isInput()   const {return flags&INPUT; }
+        bool isOutput()  const {return flags&OUTPUT; }
+        bool isConstant()const {return flags&CONSTANT; }
+        bool isBound()   const {return flags&BOUND; }
     };
 
     typedef unique_ptr<Variable> pVariable;
@@ -358,6 +366,8 @@ namespace ParseTree{
     };
     enum class FormalDir{ In, Out };
     
+    class Formal;
+    typedef unique_ptr<Formal>         pFormal;
     class Formal : public Variable {
     public:
         Formal(  Attributes&&        attributes,
@@ -374,11 +384,15 @@ namespace ParseTree{
                     we(move(we))
         {}
         pExpression we;
+
+        pFormal cloneWOWhere() const{
+            return make_unique<Formal>(cloneC(attributes),id->clone(),type->clone(),
+                                       nullptr,isInput() ? FormalDir::In : FormalDir::Out);
+        }
     };
     
     typedef unique_ptr<GlobalVariable> pGlobalVariable;
     typedef unique_ptr<LocalVariable>  pLocalVariable;
-    typedef unique_ptr<Formal>         pFormal;
     typedef unique_ptr<BoundVariable>  pBoundVariable;
     // </editor-fold>
 
@@ -454,7 +468,14 @@ namespace ParseTree{
         TypeParameters tParams;
         Formals        formals;
 
-        pProcSignature cloneWOWhere() const;
+        pProcSignature cloneWOWhere() const{
+            auto r = make_unique<ProcSignature>();
+            r->tParams=cloneC(tParams);
+            for (auto& f : formals)
+                r->formals.push_back(f->cloneWOWhere());
+//            std::for_each(formals.begin(),formals.end(),[&r](auto& f){r->formals.push_back(f->cloneWOWhere());});
+            return move(r);
+        }
     };
     
     class Modifies;
@@ -803,7 +824,7 @@ namespace ParseTree{
             : Expression(pos), locals(move(locals)), ss(move(ss)){}
         CodeExpression(const CodeExpression& o);
 //            : Expression(o.pos), locals(cloneC(o.locals)), ss(o.ss->clone()){}
-        virtual pExpression clone() const override{return make_unique<CodeExpression>(*this); }
+        virtual pExpression clone() const override;
         Locals locals;
         pCBBlockStatement ss;
     };
@@ -822,7 +843,7 @@ namespace ParseTree{
     class SimpleStatement     : public Statement{
     public:
         using Statement::Statement;
-        virtual pSimpleStatement clone() const; // = 0;
+        virtual pSimpleStatement clone() const = 0;
     };
     class CoreStatement       : public SimpleStatement{using Statement::Statement;};
     class CompoundStatement   : public NSStatement{using Statement::Statement;};
@@ -833,7 +854,7 @@ namespace ParseTree{
     class CBControlStatement  : public NSStatement{
     public:
         using Statement::Statement;
-        virtual pCBControlStatement clone() const; // = 0;
+        virtual pCBControlStatement clone() const = 0;
     };
     
     typedef unique_ptr<Statement> pStatement;
@@ -924,78 +945,124 @@ namespace ParseTree{
         pExpression e;
         PredicateStatement(TextPosition pos,Attributes&& attributes,pExpression&& e) 
         : CoreStatement(pos), attributes(move(attributes)), e(move(e)){}
+    protected:
+        PredicateStatement(const PredicateStatement& o)
+        : CoreStatement(o.pos), attributes(cloneC(o.attributes)), e(o.e->clone()){}
     };
     typedef unique_ptr<PredicateStatement> pPredicateStatement;
     
     class AssertStatement : public PredicateStatement{
     public:
         using PredicateStatement::PredicateStatement;
+        pSimpleStatement clone() const override{ return make_unique<AssertStatement>(*this); }
     };
     class AssumeStatement : public PredicateStatement{
     public:
         using PredicateStatement::PredicateStatement;
+        pSimpleStatement clone() const override{ return make_unique<AssumeStatement>(*this); }
     };
     
     class HavocStatement : public CoreStatement{
     public:
-        HavocStatement(TextPosition pos, Identifiers&& ids) : CoreStatement(pos), ids(move(ids)) {}
+        HavocStatement(TextPosition pos, Identifiers&& ids)
+            : CoreStatement(pos), ids(move(ids)) {}
+        HavocStatement(const HavocStatement& o)
+            : CoreStatement(o.pos), ids(cloneC(o.ids)) {}
+        pSimpleStatement clone() const override{ return make_unique<HavocStatement>(*this); }
         Identifiers ids;
     };
 
     // <editor-fold desc="Assignment">
-    class AssignLHS : public PTreeNode{using PTreeNode::PTreeNode;};
+    class AssignLHS;
+    typedef unique_ptr<AssignLHS> pAssignLHS;
+    class AssignLHS : public PTreeNode{
+    public:
+        using PTreeNode::PTreeNode;
+        virtual pAssignLHS clone() const = 0;
+    };
+    typedef vector<pAssignLHS>    AssignLHSs;
+
     class AssignLHSVar : public AssignLHS{
     public:
         AssignLHSVar(pIdentifier&& id) : AssignLHS(id->pos), id(move(id)){}
+        AssignLHSVar(const AssignLHSVar& o)
+            : AssignLHS(o.id->pos), id(o.id->clone()){}
+        pAssignLHS clone() const override{ return make_unique<AssignLHSVar>(*this);}
+
         pIdentifier id;
     };
-    typedef unique_ptr<AssignLHS> pAssignLHS;
-    typedef vector<pAssignLHS>    AssignLHSs;
     
+    class MapSelect;
+    typedef unique_ptr<MapSelect> pMapSelect;
     class MapSelect : public PTreeNode{
     public:
-        MapSelect(TextPosition pos,Expressions&& indices) : PTreeNode(pos), indices(move(indices)){}
+        MapSelect(TextPosition pos,Expressions&& indices)
+            : PTreeNode(pos), indices(move(indices)){}
+        MapSelect(const MapSelect& o)
+            : PTreeNode(o.pos), indices(cloneC(o.indices)){}
+        pMapSelect clone() const{ return make_unique<MapSelect>(*this);}
+
         Expressions indices;
     };
-    typedef unique_ptr<MapSelect> pMapSelect;
     typedef vector<pMapSelect> MapSelects;
     
     class AssignLHSMap : public AssignLHS{
     public:
         AssignLHSMap(pIdentifier&& id, MapSelects&& mss) 
             : AssignLHS(id->pos), id(move(id)), mss(move(mss)){}
+        AssignLHSMap(const AssignLHSMap& o)
+            : AssignLHS(o.id->pos), id(o.id->clone()), mss(cloneC(o.mss)){}
+        pAssignLHS clone() const override{ return make_unique<AssignLHSMap>(*this); };
+
         pIdentifier id;
         MapSelects mss;
     };
     typedef unique_ptr<AssignLHS> pAssignLHS;
     typedef vector<pAssignLHS>    AssignLHSs;
     
+    class AssignStatement;
+    typedef unique_ptr<AssignStatement> pAssignStatement;
     class AssignStatement : public SimpleStatement{
     public:
         AssignStatement(TextPosition pos, AssignLHSs&& lhss, Expressions&& rhss) 
              : SimpleStatement(pos), lhss(move(lhss)), rhss(move(rhss)) {}
+        AssignStatement(const AssignStatement& o)
+             : SimpleStatement(pos), lhss(cloneC(lhss)), rhss(cloneC(rhss)) {}
+        virtual pSimpleStatement clone() const override{ return unique_ptr<SimpleStatement>(new AssignStatement(*this)); }
         AssignLHSs  lhss;
         Expressions rhss;
+
     };
     // </editor-fold>
 
+    class CallStatement;
+    typedef unique_ptr<CallStatement> pCallStatement;
     class CallStatement : public SimpleStatement{
     public:
         CallStatement(TextPosition pos,  pIdentifier&& procId, Identifiers&& lhss, vector<pExpression>&& args, bool isFree = false, bool isAsync = false) 
             :  SimpleStatement(pos), procId(move(procId)), lhss(move(lhss)), args(move(args)), isFree(isFree), isAsync(isAsync) {}
+        CallStatement(const CallStatement& o)
+            :  SimpleStatement(o.pos), procId(o.procId->clone()), lhss(cloneC(o.lhss)),
+              args(cloneC(o.args)), isFree(o.isFree), isAsync(o.isAsync) {}
+        virtual pSimpleStatement clone() const override { return cloneCS(); }
+        virtual pCallStatement cloneCS() const { return make_unique<CallStatement>(*this); }
         pIdentifier procId;
         Identifiers lhss;
         Expressions args;
         bool isFree;
         bool isAsync;
     };
-    typedef unique_ptr<CallStatement> pCallStatement;
     typedef vector<pCallStatement> CallStatements;
 
     class ParallelCallStatement : public SimpleStatement{
     public:
         ParallelCallStatement(TextPosition pos,  Attributes&& attributes, CallStatements&& calls)
             :  SimpleStatement(pos), attributes(move(attributes)), calls(move(calls)){}
+        ParallelCallStatement(const ParallelCallStatement& o)
+            :  SimpleStatement(o.pos), attributes(cloneC(o.attributes)),
+              calls(cloneCM<CallStatements,CallStatement,&CallStatement::cloneCS>(o.calls)){}
+        virtual pSimpleStatement clone() const{ return make_unique<ParallelCallStatement>(*this); }
+
         Attributes attributes;
         CallStatements calls;
     };
@@ -1003,6 +1070,8 @@ namespace ParseTree{
     class YieldStatement : public SimpleStatement{
     public:
         YieldStatement(TextPosition pos) : SimpleStatement(pos){}
+        YieldStatement(const YieldStatement& o) : SimpleStatement(o.pos){}
+        virtual pSimpleStatement clone() const{ return make_unique<YieldStatement>(*this); }
     };
 
     class ITEStatement : public CompoundStatement{
@@ -1040,6 +1109,9 @@ namespace ParseTree{
         GotoStatement(TextPosition pos, Identifiers&& targets)
             : ControlStatement(pos), targets(move(targets)){}
         
+        virtual pCBControlStatement clone() const override{
+            return make_unique<GotoStatement>(pos,cloneC(targets));
+        }
         Identifiers targets;
     };
     typedef unique_ptr<GotoStatement> pGotoStatement;
@@ -1052,6 +1124,11 @@ namespace ParseTree{
     class ReturnEStatement : public CBControlStatement{
     public:
         ReturnEStatement(TextPosition pos,pExpression&& e) : CBControlStatement(pos), e(move(e)) {}
+
+        virtual pCBControlStatement clone() const override{
+            return make_unique<ReturnEStatement>(pos,e->clone());
+        }
+
         pExpression e;
     };
     // </editor-fold>

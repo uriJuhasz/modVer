@@ -18,7 +18,7 @@ string time2String(const tm& t){
     return ss.str();
 }
 
-const string boogieFileName = "test/AVLTree.bpl";
+const string boogieFileName = "../../modVer/test/AVLTree.bpl";
 
 int parseBoogieFile(const string& fileName);
 int main(int argc, char*argv[])

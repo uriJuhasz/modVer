@@ -18,6 +18,12 @@ ConstantOrderSpec::ConstantOrderSpec(const ConstantOrderSpec& o)
     : specified(o.specified), complete(o.complete), parents(o.parents){}
 pConstantOrderSpec ConstantOrderSpec::clone() const{return make_unique<ConstantOrderSpec>(*this); }
 
+
+pExpression CodeExpression::clone() const{
+    return make_unique<CodeExpression>(pos,cloneC(locals),ss->clone());
+}
+
+
 bool isDigit(wchar_t c)
 {
     return c>='0' && c<='9';
