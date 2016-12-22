@@ -2,6 +2,7 @@
 #define COMMON__DATA_TYPES_H
 #include <string>
 #include <boost/multiprecision/cpp_int.hpp>
+#include <exception>
 
 namespace common{
     typedef wchar_t     Char;
@@ -11,6 +12,7 @@ namespace common{
     typedef std::wstring String;
     typedef std::wstring ID;
     
+    class StringConversionException : public std::exception{};
     int32_t  string2Int32   (const String& s);
     Integer  string2Integer (const String& s);
     Rational string2Rational(const String& s);

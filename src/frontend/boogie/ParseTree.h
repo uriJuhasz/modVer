@@ -46,6 +46,8 @@ namespace ParseTree{
     };
     // </editor-fold>
     
+
+
     // <editor-fold desc="forwards">
     class Attribute;
     typedef unique_ptr<Attribute> pAttribute;
@@ -68,6 +70,31 @@ namespace ParseTree{
    
     // </editor-fold>
     
+    // <editor-fold desc="Expressions1">
+    class WExpression : public PTreeNode{
+    public:
+        WExpression(TextPosition pos) : PTreeNode(pos) {}
+    };
+    typedef unique_ptr<WExpression> pWExpression;
+
+    class WildCardExpression : public WExpression{
+    public:
+        WildCardExpression(TextPosition pos) : WExpression(pos) {}
+    };
+    typedef unique_ptr<Expression> pExpression;
+
+    class Expression;
+    typedef unique_ptr<Expression> pExpression;
+    class Expression : public WExpression{
+    public:
+        virtual ~Expression() = 0;
+        virtual pExpression clone() const = 0;
+//        static void make(const TextPosition& pos, const Operation op, std::initializer_list<unique_ptr<Expression>>);
+    protected:
+        Expression(TextPosition pos) : WExpression(pos) {}
+    };
+    // </editor-fold>
+
     // <editor-fold desc="Identifiers">
     /////////////////////////////////////////////////////////////
     //Identifier
@@ -387,17 +414,22 @@ namespace ParseTree{
     // <editor-fold desc="Procedures">
     class VariableExpression;
     typedef unique_ptr<VariableExpression> pVariableExpression;
+
+    class SpecExpression;
+    typedef unique_ptr<SpecExpression> pSpecExpression;
     class SpecExpression : public PTreeNode{
     public:
         SpecExpression(const TextPosition& pos, bool isFree, pExpression&& e, Attributes attributes = Attributes())
             : PTreeNode(pos), isFree(isFree), e(move(e)), attributes(move(attributes)) {}
+        SpecExpression(const SpecExpression& o)
+            : PTreeNode(o.pos), isFree(o.isFree), e(o.e->clone()), attributes(cloneC(o.attributes)) {}
+        pSpecExpression clone() const{return make_unique<SpecExpression>(*this); }
         bool isFree;
         pExpression e;
         Attributes attributes;
     };
     
     typedef vector<pFormal> Formals;
-    typedef unique_ptr<SpecExpression> pSpecExpression;
     typedef vector<pSpecExpression> SpecExpressions;
     
     class ProcSignature;
@@ -409,24 +441,32 @@ namespace ParseTree{
         Formals        formals;
     };
     
+    class Modifies;
+    typedef unique_ptr<Modifies> pModifies;
     class Modifies : public PTreeNode{
     public:
-        Modifies(TextPosition pos, bool free, pIdentifier&& id) : PTreeNode(pos), id(move(id)), free(free){}
+        Modifies(TextPosition pos, bool free, pIdentifier&& id)
+            : PTreeNode(pos), id(move(id)), free(free){}
+        Modifies(const Modifies& o)
+            : PTreeNode(o.pos), id(o.id->clone()), free(o.free){}
+        pModifies clone() const{return make_unique<Modifies>(*this); }
         pIdentifier id;
         bool free;
     };
-    typedef unique_ptr<Modifies> pModifies;
     
     class ProcSpec;
     typedef unique_ptr<ProcSpec> pProcSpec;
     class ProcSpec : public PTreeNode{
     public:
         ProcSpec(){}
-        pProcSpec clone() const;
+        ProcSpec(const ProcSpec& o)
+            : mod(cloneC(o.mod)), req(cloneC(o.req)), ens(cloneC(o.ens)) {}
 
-        vector<pModifies> modifies;
-        SpecExpressions preconditions;
-        SpecExpressions postconditions;
+        pProcSpec clone() const{return make_unique<ProcSpec>(*this); }
+
+        vector<pModifies> mod;
+        SpecExpressions req;
+        SpecExpressions ens;
     };
     
     class ProcedureSC : public PTreeNode{
@@ -515,20 +555,20 @@ namespace ParseTree{
     // <editor-fold desc="Programs">
     class Scope : public PTreeNode{
     public:
-    	void addTypeDef    (pTypeDef&&  d);
-    	void addVariableDef(pVariable&& d);
-    	void addFunctionDef(pFunction&& d);
-    private:
-    	vector<pVariable> variables;
+        void addTypeDef    (pTypeDef&&  t){ typeDefs.push_back(move(t)); }
+        void addVariableDef(pVariable&& v){ variables.push_back(move(v)); }
+        void addFunctionDef(pFunction&& f){functions.push_back(move(f)); }
+
+        vector<pVariable> variables;
     	vector<pTypeDef>  typeDefs;
     	vector<pFunction> functions;
     };
 
     class Program : public Scope{
     public:
-    	void addAxiom         (pAxiom&&          axiom);
-    	void addProcedure     (pProcedure&&      procedure);
-    	void addImplementation(pImplementation&& Implementation);
+        void addAxiom         (pAxiom&&          a){axioms.push_back(move(a)); }
+        void addProcedure     (pProcedure&&      p){procedures.push_back(move(p)); }
+        void addImplementation(pImplementation&& i){implementations.push_back(move(i));}
     private:
         vector<pAxiom>          axioms;
         vector<pProcedure>      procedures;
@@ -537,30 +577,6 @@ namespace ParseTree{
 //    class Operation : public ASTNode{};
     // </editor-fold>
 
-    // <editor-fold desc="Expressions">
-    class WExpression : public PTreeNode{
-    public:
-        WExpression(TextPosition pos) : PTreeNode(pos) {}
-    };
-    typedef unique_ptr<WExpression> pWExpression;
-    
-    class WildCardExpression : public WExpression{
-    public:
-        WildCardExpression(TextPosition pos) : WExpression(pos) {}
-    };
-    typedef unique_ptr<Expression> pExpression;
-
-    class Expression;
-    typedef unique_ptr<Expression> pExpression;
-    class Expression : public WExpression{
-    public:
-        virtual ~Expression() = 0;
-        virtual pExpression clone() const = 0;
-//        static void make(const TextPosition& pos, const Operation op, std::initializer_list<unique_ptr<Expression>>);
-    protected:
-        Expression(TextPosition pos) : WExpression(pos) {}
-    };
-    
     class VariableExpression : public Expression{
     public:
         VariableExpression(pIdentifier&& id) : Expression(id->pos), id(move(id)) {}

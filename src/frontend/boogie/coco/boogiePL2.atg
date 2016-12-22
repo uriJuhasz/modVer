@@ -113,13 +113,14 @@ TOKENS
 
   string = quote { regularStringChar | "\\\"" } quote.
 
-  decimal = digit {digit} 'e' [ '-' ] digit {digit} .
+  dec = digit {digit}
+  decimal =  dec 'e' [ '-' ] dec .
   dec_float = digit {digit} '.' digit {digit} [ 'e' [ '-' ] digit {digit} ] .
-		float = [ '-' ] digit {digit} 'e' [ '-' ] digit {digit} 'f' digit {digit} 'e' digit {digit} 
-										| '0' 'N' 'a' 'N' digit {digit} 'e' digit {digit}
-										| '0' 'n' 'a' 'n' digit {digit} 'e' digit {digit}
-										| '0' '+' 'o' 'o' digit {digit} 'e' digit {digit}
-										| '0' '-' 'o' 'o' digit {digit} 'e' digit {digit} .
+    float = [ '-' ] digit {digit} 'e' [ '-' ] digit {digit} 'f' digit {digit} 'e' digit {digit}
+                                    | '0' 'N' 'a' 'N' digit {digit} 'e' digit {digit}
+                                    | '0' 'n' 'a' 'n' digit {digit} 'e' digit {digit}
+                                    | '0' '+' 'o' 'o' digit {digit} 'e' digit {digit}
+                                    | '0' '-' 'o' 'o' digit {digit} 'e' digit {digit} .
 
   not = '!' | '\u00ac'.
   minus = '-'.
@@ -331,7 +332,7 @@ ProcSpecP<. ProcSpec& spec .>
 ModifiesP<. bool _free, ProcSpec& spec .>
 = (. TextPosition pos; Identifiers ids; .)
   "modifies" (. pos = toPos(t); .)
-    [ IdentifiersCS<ids>  (. for (auto& id : ids) spec.modifies.push_back(make_unique<Modifies>(pos,_free, move(id))); .) ]
+    [ IdentifiersCS<ids>  (. for (auto& id : ids) spec.mod.push_back(make_unique<Modifies>(pos,_free, move(id))); .) ]
     ";"
 .
 
@@ -339,8 +340,8 @@ SpecPrePost<. bool _free, ProcSpec& spec .>
 = (. TextPosition pos; 
      SpecExpressions* dest;
      pExpression e; .)
-  (   "requires"            (. dest = &spec.preconditions;  .)               
-    | "ensures"             (. dest = &spec.postconditions; .)
+  (   "requires"            (. dest = &spec.req;  .)
+    | "ensures"             (. dest = &spec.ens; .)
   )                         (. pos = toPos(t);    .)
   Proposition<e> ";"        (. dest->push_back(make_unique<SpecExpression>(pos,_free,move(e))); .)
 .

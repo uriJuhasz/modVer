@@ -1,0 +1,55 @@
+#include "data_types.h"
+#include <locale>
+#include <unordered_map>
+#include <limits>
+
+static constexpr const unordered_map<char,int32_t> digitMap = {
+    {'0',0},
+    {'1',1},
+    {'2',2},
+    {'3',3},
+    {'4',4},
+    {'5',5},
+    {'6',6},
+    {'7',7},
+    {'8',8},
+    {'9',9}
+}
+
+int32_t char2Int32(char c){
+    return digitMap[c];
+}
+
+int32_t  string2Int32   (const String& s)
+{
+  if (s.length()==0)
+      throw new StringConversionException();
+  int64_t v = 0;
+  for (auto c : s)
+  { //allow leading 0s
+      if (!isdigit(c))
+          throw new StringConversionException();
+      int i = char2Int32(c);
+      v = v*10 + i;
+      if (v>numeric_limits<int32_t>::max)
+        throw new StringConversionException();
+  }
+  return v;
+}
+
+Integer  string2Integer (const String& s){
+    Integer i = 0;
+    for (auto c : s)
+    { //allow leading 0s
+        if (!isdigit(c))
+            throw new StringConversionException();
+        int i = char2Int32(c);
+        v = v*10 + i;
+    }
+    return i;
+}
+
+Rational string2Rational(const String& s)
+{
+
+}
