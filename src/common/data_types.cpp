@@ -3,7 +3,9 @@
 #include <unordered_map>
 #include <limits>
 
-static constexpr const unordered_map<char,int32_t> digitMap = {
+namespace common{
+
+static const std::unordered_map<char,int32_t> digitMap = {
     {'0',0},
     {'1',1},
     {'2',2},
@@ -14,10 +16,10 @@ static constexpr const unordered_map<char,int32_t> digitMap = {
     {'7',7},
     {'8',8},
     {'9',9}
-}
+};
 
 int32_t char2Int32(char c){
-    return digitMap[c];
+    return digitMap.at(c);
 }
 
 int32_t  string2Int32   (const String& s)
@@ -31,14 +33,14 @@ int32_t  string2Int32   (const String& s)
           throw new StringConversionException();
       int i = char2Int32(c);
       v = v*10 + i;
-      if (v>numeric_limits<int32_t>::max)
+      if (v>std::numeric_limits<int32_t>::max())
         throw new StringConversionException();
   }
   return v;
 }
 
 Integer  string2Integer (const String& s){
-    Integer i = 0;
+    Integer v = 0;
     for (auto c : s)
     { //allow leading 0s
         if (!isdigit(c))
@@ -46,10 +48,12 @@ Integer  string2Integer (const String& s){
         int i = char2Int32(c);
         v = v*10 + i;
     }
-    return i;
+    return v;
 }
-
+/*
 Rational string2Rational(const String& s)
 {
 
-}
+}*/
+
+}//namespace common

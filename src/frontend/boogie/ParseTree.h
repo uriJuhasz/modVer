@@ -725,19 +725,34 @@ namespace ParseTree{
         int numBits;
         Integer value;
     };
+
+    enum class Sign{ Pos,Neg };
+
     class Float{
     public:
-        Float(){}
-        Float(Integer mantissa, int mantissaBits, Integer exponent, int exponentBits, bool sign)
-            : mantissa(mantissa), mantissaBits(mantissaBits), 
-                exponent(exponent), exponentBits(exponentBits),
-                sign(sign)
+        Float():mantissa(0),mantissaBits(23),exponent(0),exponentBits(8),sgnB(0), nanB(0), infB(0){}
+        Float(Sign sign, Integer mantissa, int mantissaBits, Integer exponent, int exponentBits)
+            : mantissa(mantissa), mantissaBits(mantissaBits),
+              exponent(exponent), exponentBits(exponentBits),
+              sgnB(sign2Int(sign)), nanB(0), infB(0)
         {}
+        static Float nan()        {Float r; r.nanB=1;                       return r;}
+        static Float inf(Sign sgn){Float r; r.infB=1; r.sgnB=sign2Int(sgn); return r;}
+
+        Sign sign(){return sgnB==1 ? Sign::Neg : Sign::Pos; }
+        bool isNan(){return nanB==1;}
+        bool isInf(){return infB==1;}
         Integer mantissa;
         int mantissaBits;
         Integer exponent;
         int exponentBits;
-        bool sign;
+    private:
+        static int sign2Int(Sign sgn)
+        { return (sgn==Sign::Neg) ? 1 : 0; }
+
+        unsigned char sgnB : 1;
+        unsigned char nanB : 1;
+        unsigned char infB : 1;
     };
     Float    string2Float   (const String& s);
     

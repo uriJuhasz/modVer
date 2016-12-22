@@ -7,8 +7,8 @@ set (modVer_VERSION_MINOR 0)
 set (CMAKE_VERBOSE_MAKEFILE on)
 
 
-set(CMAKE_CXX_STANDARD 14)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pedantic -Wall")
+#set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pedantic -Wall -std=c++17")
 
 find_package(Boost 1.62.0 COMPONENTS)
 include_directories(SYSTEM ${Boost_INCLUDE_DIRS} )

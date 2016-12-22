@@ -113,10 +113,9 @@ TOKENS
 
   string = quote { regularStringChar | "\\\"" } quote.
 
-  dec = digit {digit}
-  decimal =  dec 'e' [ '-' ] dec .
+  decimal =  digit {digit} 'e' [ '-' ] digit {digit} .
   dec_float = digit {digit} '.' digit {digit} [ 'e' [ '-' ] digit {digit} ] .
-    float = [ '-' ] digit {digit} 'e' [ '-' ] digit {digit} 'f' digit {digit} 'e' digit {digit}
+  float = [ '-' ] digit {digit} 'e' [ '-' ] digit {digit} 'f' digit {digit} 'e' digit {digit}
                                     | '0' 'N' 'a' 'N' digit {digit} 'e' digit {digit}
                                     | '0' 'n' 'a' 'n' digit {digit} 'e' digit {digit}
                                     | '0' '+' 'o' 'o' digit {digit} 'e' digit {digit}
