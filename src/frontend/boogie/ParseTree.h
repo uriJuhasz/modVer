@@ -736,8 +736,8 @@ namespace ParseTree{
               exponent(exponent), exponentBits(exponentBits),
               sgnB(sign2Int(sign)), nanB(0), infB(0)
         {}
-        static Float nan()        {Float r; r.nanB=1;                       return r;}
-        static Float inf(Sign sgn){Float r; r.infB=1; r.sgnB=sign2Int(sgn); return r;}
+        static Float nan(          int32_t mL, int32_t eL){Float r; r.nanB=1; r.mantissaBits=mL; r.exponentBits=eL;                      return r;}
+        static Float inf(Sign sgn, int32_t mL, int32_t eL){Float r; r.infB=1; r.mantissaBits=mL; r.exponentBits=eL;r.sgnB=sign2Int(sgn); return r;}
 
         Sign sign(){return sgnB==1 ? Sign::Neg : Sign::Pos; }
         bool isNan(){return nanB==1;}

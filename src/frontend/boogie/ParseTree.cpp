@@ -88,35 +88,35 @@ Float string2Float   (const wstring& s)
      * or of the special value formats: 0NaN*e* 0nan*e* 0+oo*e* 0-oo*e*
      * Where * indicates an integer value (digit)
      */
-    if (s.length()>=7)
+
+    if (s.length()<7)
+        throw new StringConversionException();
+    auto s4 = s.substr(0,4);
+    auto isNan = s4.compare(L"0NaN")==0 || s4.compare(L"0nan")==0;
+    auto isInf = s4.compare(L"0+oo")==0 || s4.compare(L"0-oo")==0;
+    if (isNan || isInf)
     {
-        auto s4 = s.substr(0,4);
-        auto isNan = s4.compare(L"0NaN")==0 || s4.compare(L"0nan")==0;
-        auto isInf = s4.compare(L"0+oo")==0 || s4.compare(L"0-oo")==0;
-        if (isNan || isInf)
-        {
-            unsigned int i=4;
-            auto x = getDec(s,i);
-            getChar(s,i,'e');
-            auto y = getDec(s,i);
-            if (isNan)
-                return Float::nan(x,y);
-            else
-                return Float::inf(sign(s4[1]),x,y);
-        }else{
-            unsigned int i=0;
-            auto sign = getSign(s,i);
-            auto sig = getDec(s,i);
-            getChar(s,i,'e');
-            auto exp = getDec(s,i);
-            getChar(s,i,'f');
-            auto sigL = getInt32(s,i);
-            getChar(s,i,'e');
-            auto expL = getInt32(s,i);
-            if (!inbits(sig,sigL) || !inbits(exp,expL))
-                throw new StringConversionException();
-            return Float(sign,sig,sigL,exp,expL);
-        }
+        unsigned int i=4;
+        auto x = getInt32(s,i);
+        getChar(s,i,'e');
+        auto y = getInt32(s,i);
+        if (isNan)
+            return Float::nan(x,y);
+        else
+            return Float::inf(sign(s4[1]),x,y);
+    }else{
+        unsigned int i=0;
+        auto sign = getSign(s,i);
+        auto sig = getDec(s,i);
+        getChar(s,i,'e');
+        auto exp = getDec(s,i);
+        getChar(s,i,'f');
+        auto sigL = getInt32(s,i);
+        getChar(s,i,'e');
+        auto expL = getInt32(s,i);
+        if (!inbits(sig,sigL) || !inbits(exp,expL))
+            throw new StringConversionException();
+        return Float(sign,sig,sigL,exp,expL);
     }
 }
 
