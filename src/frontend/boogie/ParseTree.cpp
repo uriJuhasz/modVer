@@ -4,6 +4,13 @@ namespace frontend{
 namespace boogie{
 namespace ParseTree{
 
+Statement::~Statement(){}
+Operator::~Operator(){}
+AttributeParam::~AttributeParam(){}
+Expression::~Expression(){}
+TypeDef::~TypeDef(){}
+ProcedureSC::~ProcedureSC(){}
+
 using common::StringConversionException;
 
 ConstantOrderSpec::ConstantOrderSpec(){}

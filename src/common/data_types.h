@@ -13,9 +13,9 @@ namespace common{
     typedef std::wstring ID;
     
     class StringConversionException : public std::exception{};
-    int32_t  string2Int32   (const String& s);
-    Integer  string2Integer (const String& s);
-    Rational string2Rational(const String& s);
+    int32_t  string2Int32   (const std::wstring& s);
+    Integer  string2Integer (const std::wstring& s);
+    Rational string2Rational(const std::wstring& s);
 }
 
 #endif

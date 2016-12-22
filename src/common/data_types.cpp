@@ -22,7 +22,7 @@ int32_t char2Int32(char c){
     return digitMap.at(c);
 }
 
-int32_t  string2Int32   (const String& s)
+int32_t  string2Int32   (const std::wstring& s)
 {
   if (s.length()==0)
       throw new StringConversionException();
@@ -39,7 +39,7 @@ int32_t  string2Int32   (const String& s)
   return v;
 }
 
-Integer  string2Integer (const String& s){
+Integer  string2Integer (const std::wstring& s){
     Integer v = 0;
     for (auto c : s)
     { //allow leading 0s

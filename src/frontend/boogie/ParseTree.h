@@ -143,10 +143,16 @@ namespace ParseTree{
     };
     class MapType : public Type{
     public:
-        MapType(TextPosition pos, TypeParameters&& typeParameters, vector<pType>&& argumentTypes, pType&& resultType)
-                : Type(pos), typeParameters(move(typeParameters)), argumentTypes(move(argumentTypes)), resultType(move(resultType))
+        MapType(TextPosition pos, TypeParameters&& typeParameters,
+                vector<pType>&& argumentTypes, pType&& resultType)
+                : Type(pos), typeParameters(move(typeParameters)),
+                  argumentTypes(move(argumentTypes)), resultType(move(resultType))
         {}
-        virtual pType clone() const override;
+        MapType(const MapType& o)
+                : Type(o.pos), typeParameters(cloneC(o.typeParameters)),
+                  argumentTypes(cloneC(o.argumentTypes)), resultType(o.resultType->clone())
+        {}
+        virtual pType clone() const override{return make_unique<MapType>(*this); }
         TypeParameters typeParameters;
         vector<pType> argumentTypes;
         pType resultType; 
@@ -307,7 +313,16 @@ namespace ParseTree{
                    Variable::GLOBAL),
                    we(move(we))
         {}
-        virtual unique_ptr<GlobalVariable> clone() const;
+        GlobalVariable(const GlobalVariable& o)
+                : Variable(
+                   o.pos,
+                   cloneC(o.attributes),
+                   o.id->clone(),
+                   o.type->clone(),
+                   Variable::GLOBAL),
+                   we(o.we->clone())
+        {}
+        virtual unique_ptr<GlobalVariable> clone() const{ return make_unique<GlobalVariable>(*this); }
         //{return make_unique<GlobalVariable>(pos,cloneC(attributes), id->clone(), type->clone(),we->clone()); }
         pExpression we;
     };
@@ -436,9 +451,10 @@ namespace ParseTree{
     typedef unique_ptr<ProcSignature> pProcSignature;
     class ProcSignature : public PTreeNode{
     public:
-        pProcSignature cloneWOWhere() const;
         TypeParameters tParams;
         Formals        formals;
+
+        pProcSignature cloneWOWhere() const;
     };
     
     class Modifies;
@@ -533,21 +549,29 @@ namespace ParseTree{
     public:
         StringAttributeParam(TextPosition pos, const wstring& value)
             : AttributeParam(pos), value(value){}
+        StringAttributeParam(const StringAttributeParam& o)
+            : AttributeParam(o.pos), value(o.value){}
         wstring value;
-        pAttributeParam clone() const override;//{return make_unique<StringAttributeParam>(value);};
+        pAttributeParam clone() const override{return make_unique<StringAttributeParam>(*this);};
     };
     class ExpressionAttributeParam : public AttributeParam{
     public:
-        ExpressionAttributeParam(pExpression&& value);
-//            : AttributeParam(value->pos), value(move(value)){}
+        ExpressionAttributeParam(pExpression&& value)
+            : AttributeParam(value->pos),value(move(value)) {}
+        ExpressionAttributeParam(const ExpressionAttributeParam& o)
+            : AttributeParam(o.pos), value(o.value->clone()) {}
+        pAttributeParam clone() const override{ return make_unique<ExpressionAttributeParam>(*this); }
+
         pExpression value;
-        pAttributeParam clone() const override; //{return make_unique<ExpressionAttributeParam>(value->clone());};
     };
     class Trigger : public PTreeNode{
     public:
         Trigger(){}
         Trigger(Expressions&& es)
             :es(move(es)){}
+        Trigger(const Trigger& o)
+            :es(cloneC(o.es)){}
+        pTrigger clone() const{return make_unique<Trigger>(*this); }
         Expressions es;
     };
     // </editor-fold>
@@ -687,7 +711,10 @@ namespace ParseTree{
                     TypeParameters&& tVars, BoundVariables&& vars, pExpression e)
             : Expression(pos), binder(binder), attributes(move(attributes)), triggers(move(triggers)),
               tVars(move(tVars)), vars(move(vars)), e(move(e)) {}
-        virtual pExpression clone() const override; //{ return make_unique<QExpression>(pos,binder, cloneC(tVars), cloneC(vars), e->clone()); }
+        QExpression(const QExpression& o)
+            : Expression(o.pos), binder(o.binder), attributes(cloneC(o.attributes)),
+              triggers(cloneC(o.triggers)), tVars(cloneC(o.tVars)), vars(cloneC(o.vars)), e(o.e->clone()) {}
+        virtual pExpression clone() const override{ return make_unique<QExpression>(*this); }
 
         Binder         binder;
         Attributes     attributes;
@@ -699,7 +726,9 @@ namespace ParseTree{
     class OldExpression : public Expression{
     public:
         OldExpression(TextPosition pos, pExpression&& e) : Expression(pos), e(move(e)){}
-        virtual pExpression clone() const override;
+        OldExpression(const OldExpression& o) :
+            Expression(o.pos), e(o.e->clone()){}
+        virtual pExpression clone() const override{return make_unique<OldExpression>(*this);}
         pExpression e;
     };
     class LiteralExpression : public Expression{
@@ -711,9 +740,10 @@ namespace ParseTree{
     template<class T>class LiteralExpressionC : public LiteralExpression{
     public:
         LiteralExpressionC(TextPosition pos, T&& val) : LiteralExpression(pos), val(move(val)){}
-//        LiteralExpressionC(TextPosition pos, T val) : LiteralExpression(pos), val(val){}
+        LiteralExpressionC(const LiteralExpressionC<T>& o) :
+            LiteralExpression(o.pos), val(o.val){}
         T val;
-        virtual pExpression clone() const override;
+        virtual pExpression clone() const override{return make_unique<LiteralExpressionC<T>>(*this); }
         
         
     };
@@ -771,7 +801,9 @@ namespace ParseTree{
     public:
         CodeExpression(TextPosition pos, Locals&& locals, pCBBlockStatement&& ss)
             : Expression(pos), locals(move(locals)), ss(move(ss)){}
-        virtual pExpression clone() const override;
+        CodeExpression(const CodeExpression& o);
+//            : Expression(o.pos), locals(cloneC(o.locals)), ss(o.ss->clone()){}
+        virtual pExpression clone() const override{return make_unique<CodeExpression>(*this); }
         Locals locals;
         pCBBlockStatement ss;
     };
@@ -784,30 +816,45 @@ namespace ParseTree{
         virtual ~Statement() = 0;
     };
     class NSStatement         : public virtual Statement{using Statement::Statement;};
-    class SimpleStatement     : public Statement{using Statement::Statement;};
+
+    class SimpleStatement;
+    typedef unique_ptr<SimpleStatement> pSimpleStatement;
+    class SimpleStatement     : public Statement{
+    public:
+        using Statement::Statement;
+        virtual pSimpleStatement clone() const; // = 0;
+    };
     class CoreStatement       : public SimpleStatement{using Statement::Statement;};
     class CompoundStatement   : public NSStatement{using Statement::Statement;};
     class ControlStatement    : public NSStatement{using Statement::Statement;};
 
-    class CBControlStatement  : public NSStatement{using Statement::Statement;};
+    class CBControlStatement;
+    typedef unique_ptr<CBControlStatement> pCBControlStatement;
+    class CBControlStatement  : public NSStatement{
+    public:
+        using Statement::Statement;
+        virtual pCBControlStatement clone() const; // = 0;
+    };
     
     typedef unique_ptr<Statement> pStatement;
     typedef vector<pStatement> StatementSeq;
     
-    typedef unique_ptr<SimpleStatement> pSimpleStatement;
     typedef vector<pSimpleStatement> SimpleStatements;
     
     typedef unique_ptr<NSStatement> pNSStatement;
     typedef unique_ptr<ControlStatement> pControlStatement;
     typedef unique_ptr<CompoundStatement> pCompoundStatement;
-    typedef unique_ptr<CBControlStatement> pCBControlStatement;
 
+    class Label;
+    typedef unique_ptr<Label> pLabel;
     class Label : public PTreeNode{
     public:
         Label(pIdentifier&& id) : id(move(id)){}
+        Label(const Label& o) : id(o.id->clone()){}
+        pLabel clone() const{return make_unique<Label>(*this); }
+
         pIdentifier id;
     };
-    typedef unique_ptr<Label> pLabel;
     typedef vector<pLabel> Labels;
     
     class SBlock : public PTreeNode{
@@ -836,15 +883,19 @@ namespace ParseTree{
     };
 
 
+    class CBSBlock;
+    typedef unique_ptr<CBSBlock> pCBSBlock;
     class CBSBlock : public PTreeNode{
     public:
         CBSBlock(pLabel&& l, SimpleStatements&& ss, pCBControlStatement cs)
             : label(move(l)), statements(move(ss)), control(move(cs)){}
+        CBSBlock(const CBSBlock& o)
+            : label(o.label->clone()), statements(cloneC(o.statements)), control(o.control->clone()){}
+        pCBSBlock clone() const{return make_unique<CBSBlock>(*this); }
         pLabel               label;
         SimpleStatements    statements;
         pCBControlStatement control;
     };
-    typedef unique_ptr<CBSBlock> pCBSBlock;
     typedef vector<pCBSBlock> CBSBlocks;
 
     class CBBlockStatement;
@@ -852,7 +903,11 @@ namespace ParseTree{
     class CBBlockStatement : public Statement{
     public:
         CBBlockStatement(CBSBlocks&& bs)
-        : Statement(), bs(move(bs)) {}
+            : Statement(), bs(move(bs)) {}
+        CBBlockStatement(const CBBlockStatement& o)
+            : Statement(), bs(cloneC(o.bs)) {}
+        pCBBlockStatement clone() const{return make_unique<CBBlockStatement>(*this); }
+
         CBSBlocks bs;
     };
     
