@@ -15,7 +15,8 @@ const string logName = "run.log";
 
 string toString(const chrono::system_clock::time_point& t){
 	auto t2 = system_clock::to_time_t(t);
-	auto tm = std::localtime(&t2);
+//	return ctime(&t2, "%d-%m-%Y %H-%M-%S");
+    auto tm = std::localtime(&t2);
 	stringstream ss;
 	ss << put_time(tm, "%d-%m-%Y %H-%M-%S");
     return ss.str();
@@ -84,10 +85,10 @@ int parseBoogieFile1(const string& boogieFileName){
     return 0;
 }
 */
-int parseBoogieFile(const string& boogieFileName){
+int parseBoogieFile(const string& boogieFN){
 
-    cout << "I:Opening Boogie file \"" << boogieFileName << "\"" << endl;
-    ifstream boogieFile(boogieFileName,ios::binary);
+    cout << "I:Opening Boogie file \"" << boogieFN << "\"" << endl;
+    ifstream boogieFile(boogieFN,ios::binary);
     if (!boogieFile.good() || !boogieFile.is_open()){
         cerr << "E:Failed to open Boogie file." << endl;
         return 1;
@@ -108,6 +109,6 @@ int parseBoogieFile(const string& boogieFileName){
     cout << "I: Parsing" << endl;
     frontend::boogie::parser::Parser::parse(input);
 
-    cout << "I: Closing Boogie file \"" << boogieFileName << "\"" << endl;
+    cout << "I: Closing Boogie file \"" << boogieFN << "\"" << endl;
     return 0;
 }

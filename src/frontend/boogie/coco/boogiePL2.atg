@@ -71,10 +71,10 @@ COMPILER BoogiePL
     }
 
     bool isUnaryITEExpression() {
-      auto t = la;
-      while (t->kind==_not || t->kind==_minus)
-        t=scanner->Peek();
-      return t->kind==_ifKW;
+      auto n = la;
+      while (n->kind==_not || n->kind==_minus)
+        n=scanner->Peek();
+      return n->kind==_ifKW;
     }
 
     typedef function< void(Attributes&&, pIdentifier&&, pType&&, pExpression&&) > ActionAITW;
@@ -104,6 +104,7 @@ CHARACTERS
 
   leftBracket = '['.
 
+
 $namespace=frontend::boogie::parser
 
 /*------------------------------------------------------------------------*/
@@ -112,7 +113,6 @@ TOKENS
   bvlit = digit {digit} 'b' 'v' digit {digit}.
   digits = digit {digit}.
 
-  colon = ':'.
 
   string = quote { regularStringChar | "\\\"" } quote.
 
@@ -127,6 +127,9 @@ TOKENS
   not = '!' | '\u00ac'.
   minus = '-'.
   ifKW = "if".
+
+  colon = ':'.
+  assign = ':' '='.
 
 COMMENTS FROM "/*" TO "*/" NESTED
 COMMENTS FROM "//" TO lf
@@ -172,8 +175,8 @@ UserDefinedType<. Program& prog, Attributes&& attributes .>
   [ "=" TypeP<body> ]
   (. TypeParameters tParams;
      for (auto& pid : params) tParams.push_back(make_unique<TypeVariable>(move(pid)));
-     if (body) prog.addTypeDef(make_unique<TypeSynonymDef>    (move(id),move(tParams),move(body)));
-          else prog.addTypeDef(make_unique<TypeConstructorDef>(move(id),move(tParams)) ); .)
+     if (body) prog.addTypeDef(make_unique<TypeSynonymDef>    (move(id), move(attributes), move(tParams),move(body)));
+          else prog.addTypeDef(make_unique<TypeConstructorDef>(move(id), move(attributes), move(tParams)) ); .)
 .
 
 /*------------------------------------------------------------------------*/
@@ -300,7 +303,7 @@ ProcedureP<. Program& prog .>
   "procedure"
   AttributesP<attributes>
   IdentifierP<id>
-  ProcSignature<sig>
+  ProcSignatureP<sig>
   (   ";"  
       { ProcSpecP<*spec> }
     | { ProcSpecP<*spec> }
@@ -309,12 +312,12 @@ ProcedureP<. Program& prog .>
   (. prog.addProcedure( make_unique<Procedure>(move(id), move(attributes), move(sig), move(spec))); .)
 .
 
-ProcSignature<. pProcSignature& sig .>
-= (. TypeParameters typeParameters;
-     Formals formals;.)
-  [ TypeParams<typeParameters> ]
-              ProcFormals<FormalDir::In,  formals>
-  [ "returns" ProcFormals<FormalDir::Out, formals> ]
+ProcSignatureP<. pProcSignature& sig .>
+= (. sig = make_unique<ProcSignature>(); .)
+  [ TypeParams<. sig->tParams .> ]
+              ProcFormals<. FormalDir::In,  sig->formals .>
+  [ "returns" ProcFormals<. FormalDir::Out, sig->formals .> ]
+  (. .)
 .
 
 ProcFormals<. FormalDir dir, Formals& formals .>
@@ -325,7 +328,7 @@ ProcFormals<. FormalDir dir, Formals& formals .>
 .
 
 ProcSpecP<. ProcSpec& spec .>
-= (. bool _free; .)
+= (. bool _free = false; .)
   ["free"                   (. _free=true; .)        ]
   (  ModifiesP<_free,spec>
   | SpecPrePost<_free,spec> )
@@ -387,9 +390,9 @@ ImplBody<. Program& prog, pIdentifier&& id, Attributes&& attributes, pProcSignat
 .
 
 ScopedBlocksP<. ScopedBlock& b .>
-= "{"
+= "{" (. auto pos = toPos(t); .)
   { LocalVar<b.locals> }
-  StmtList<b.bs> //eats up "}"
+  StmtList<pos, b.bs> //eats up "}"
 .
 
 
@@ -530,16 +533,25 @@ TypeParams<. TypeParameters& typeParams .>
 
 /*------------------------------------------------------------------------*/
 /* the StmtList also reads the final curly brace */
-StmtList<. pBlockStatement& bs .>
-= { (. Labels            labels;
-     SimpleStatements  cmds;
-     pNSStatement      endCmd;
+StmtList<. TextPosition pos, pBlockStatement& bs .>
+=  (. SBlocks blocks; .)
+  { (. Labels            labels;
+       SimpleStatements  cmds;
+       pNSStatement      endCmd;
+	 
   .)
-    { IF(isLabel()) LabelC<labels> | ()}
-    { CmdC<cmds> }
-    [ NSCmd<endCmd> ]               (. bs->bs.push_back(make_unique<SBlock>(move(labels),move(cmds),move(endCmd))); .)
+    (   ( (LabelC<labels> LabelsC<labels> |  CmdC<cmds>) { CmdC<cmds> } [ NSCmd<endCmd> ] )
+	  | (                                                                 NSCmd<endCmd>   ) )
+    (. blocks.push_back(make_unique<SBlock>(move(labels),move(cmds),move(endCmd))); .)
   }
     "}" 
+	(. bs = make_unique<BlockStatement>(pos, move(blocks)); .)
+.
+
+LabelsC<. Labels& labels .>
+= 
+	IF(isLabel()) ( LabelC<labels> LabelsC<labels> )
+	| ()
 .
 
 LabelC<. Labels& labels .>
@@ -547,7 +559,8 @@ LabelC<. Labels& labels .>
 .
 
 BlockStmt<. pBlockStatement& bs .>
-= "{" StmtList<bs>
+= 
+ "{" (. auto pos = toPos(t); .) StmtList<pos,bs>
 .
 
 NSCmd<. pNSStatement& s .>
@@ -701,7 +714,7 @@ AssignCmd<. pSimpleStatement& c .>
      TextPosition pos;                   
   .)
     AssignLHS<lhss> { "," AssignLHS<lhss> }
-    ":="                                   (. pos = toPos(t); .)
+    assign                                   (. pos = toPos(t); .)
     ExpressionsCS<rhss>
     ";"                                    (. c = make_unique<AssignStatement>(pos, move(lhss), move(rhss)); .)
 .
@@ -767,7 +780,7 @@ CallParams<. pCallStatement& c, TextPosition pos, bool isAsync, bool isFree, Att
     ( "(" [ ExpressionsCS<args> ] ")" 
     |                                 (. lhss.push_back(move(mId));  .)
       [ "," IdentifiersCS<lhss> ]
-      ":="
+      assign
       IdentifierP<mId> "(" [ ExpressionsCS<args> ] ")" 
     ) (. c = make_unique<CallStatement>(pos, move(mId), move(lhss), move(args), isFree, isAsync); .)
   .
@@ -1024,7 +1037,7 @@ MapReadOrWrite<. TextPosition pos, pExpression& e .>
 .
         
 MapWrite<. pOperator& op, Expressions& args .>
-  =  ":="                  (. op = OpC::mapWrite(toPos(t)); .)  
+  =  assign                  (. op = OpC::mapWrite(toPos(t)); .)  
       ExpressionC<args> 
 .
 
@@ -1061,15 +1074,8 @@ FAExpressionP<. pExpression& e .>
      pVariableExpression ide;
      pIdentifier id; 
   .)
-  IdentifierExpressionP<ide>      (.
-                                   assert(ide);
-                                   assert(ide->id);
-                                   id = cp(ide->id);
-                                   assert(id);
-                                   assert(!ide->id);
-                                   e = move(ide);
-                                   assert(id); .)
-  [ "(" ExpressionsCS<args> ")"  (. e = FAExpression::make(UserDefinedOp::make(move(id)), move(args)); .) ]
+  IdentifierExpressionP<ide>      (. id = cp(ide->id); e = move(ide); .)
+  [ "(" [ ExpressionC<args> { "," ExpressionC<args> } ] ")"  (. e = FAExpression::make(UserDefinedOp::make(move(id)), move(args)); .) ]
 .
 
 OldExpressionP<. pExpression& e .>

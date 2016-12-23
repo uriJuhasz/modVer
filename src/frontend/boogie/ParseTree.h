@@ -30,8 +30,7 @@ namespace ParseTree{
     // <editor-fold desc="utilities">
 	template<class T> T cp(const T& in) {
 		//		static_assert(std::is_array<C>);
-        cout << "cp0:" << &in << " : " << in.size() << endl;
-        T out;
+		T out;
 		for (const auto& e : in)
 			out.push_back(cp(e));
 		return move(out);
@@ -39,13 +38,7 @@ namespace ParseTree{
 
 	template<class T> unique_ptr<T> cp(const unique_ptr<T>& in)
 	{
-        cout << "cp1:" << ((in.get()) ? "T" : "F") << " : " << in.get() << endl;
-        unique_ptr<T> r;
-        if (in)
-            r = in->clone();
-//        auto r = (in) ? move(in->clone()) : unique_ptr<T>();
-        cout << "   =" << (r.get()) << endl;
-        return move(r);
+		return (in) ? in->clone() : unique_ptr<T>();
 	}
 	
 /*	template<template<typename> class C,typename T> C<unique_ptr<T>> clone(const C<unique_ptr<T>>& in){
@@ -135,12 +128,10 @@ namespace ParseTree{
     public:
         Identifier(TextPosition pos, const IDString& name)
         : PTreeNode(pos), name(name){}
-        pIdentifier&& clone()const{
-            auto r = make_unique<Identifier>(pos,name);
-            cout << "ID.cp(" << this << ")";
-            assert(r.get());
-            cout << "   =" << r.get() << endl;
-            return move(r); }
+        pIdentifier clone()const{
+			auto r = make_unique<Identifier>(pos,name); 
+			return move(r);
+		}
         IDString name;
     };
     // </editor-fold>
@@ -210,23 +201,24 @@ namespace ParseTree{
 
     class TypeDef  : public PTreeNode{
     public: 
-        TypeDef(pIdentifier&& id, TypeParameters&& parameters)
-            : id(move(id)), parameters(move(parameters)){}
+        TypeDef(pIdentifier&& id, Attributes&& attributes, TypeParameters&& parameters)
+            : id(move(id)), attributes(move(attributes)), parameters(move(parameters)){}
         virtual ~TypeDef() = 0;
         pIdentifier id;
+		Attributes attributes;
         TypeParameters parameters;
     };
     typedef unique_ptr<TypeDef> pTypeDef;
     
     class TypeConstructorDef : public TypeDef{
     public:
-        TypeConstructorDef(pIdentifier&& id, TypeParameters&& parameters)
-            : TypeDef(move(id),move(parameters)){}
+        TypeConstructorDef(pIdentifier&& id, Attributes&& attributes, TypeParameters&& parameters)
+            : TypeDef(move(id),move(attributes),move(parameters)){}
     };
     class TypeSynonymDef : public TypeDef{
     public:
-        TypeSynonymDef(pIdentifier&& id, TypeParameters&& parameters, pType&& target)
-            : TypeDef(move(id),move(parameters)), target(move(target)){}
+        TypeSynonymDef(pIdentifier&& id, Attributes&& attributes, TypeParameters&& parameters, pType&& target)
+            : TypeDef(move(id),move(attributes), move(parameters)), target(move(target)){}
         pType target;
     };
     
