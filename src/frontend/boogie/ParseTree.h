@@ -30,7 +30,8 @@ namespace ParseTree{
     // <editor-fold desc="utilities">
 	template<class T> T cp(const T& in) {
 		//		static_assert(std::is_array<C>);
-		T out;
+        cout << "cp0:" << &in << " : " << in.size() << endl;
+        T out;
 		for (const auto& e : in)
 			out.push_back(cp(e));
 		return move(out);
@@ -38,7 +39,13 @@ namespace ParseTree{
 
 	template<class T> unique_ptr<T> cp(const unique_ptr<T>& in)
 	{
-		return (in) ? in->clone() : unique_ptr<T>();
+        cout << "cp1:" << ((in.get()) ? "T" : "F") << " : " << in.get() << endl;
+        unique_ptr<T> r;
+        if (in)
+            r = in->clone();
+//        auto r = (in) ? move(in->clone()) : unique_ptr<T>();
+        cout << "   =" << (r.get()) << endl;
+        return move(r);
 	}
 	
 /*	template<template<typename> class C,typename T> C<unique_ptr<T>> clone(const C<unique_ptr<T>>& in){
@@ -128,7 +135,12 @@ namespace ParseTree{
     public:
         Identifier(TextPosition pos, const IDString& name)
         : PTreeNode(pos), name(name){}
-        pIdentifier&& clone()const{return move(make_unique<Identifier>(pos,name)); }
+        pIdentifier&& clone()const{
+            auto r = make_unique<Identifier>(pos,name);
+            cout << "ID.cp(" << this << ")";
+            assert(r.get());
+            cout << "   =" << r.get() << endl;
+            return move(r); }
         IDString name;
     };
     // </editor-fold>

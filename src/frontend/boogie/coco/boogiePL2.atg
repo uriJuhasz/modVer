@@ -1061,7 +1061,14 @@ FAExpressionP<. pExpression& e .>
      pVariableExpression ide;
      pIdentifier id; 
   .)
-  IdentifierExpressionP<ide>      (. id = cp(ide->id); e = move(ide); .)
+  IdentifierExpressionP<ide>      (.
+                                   assert(ide);
+                                   assert(ide->id);
+                                   id = cp(ide->id);
+                                   assert(id);
+                                   assert(!ide->id);
+                                   e = move(ide);
+                                   assert(id); .)
   [ "(" ExpressionsCS<args> ")"  (. e = FAExpression::make(UserDefinedOp::make(move(id)), move(args)); .) ]
 .
 
