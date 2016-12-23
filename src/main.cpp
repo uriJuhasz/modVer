@@ -9,16 +9,19 @@
 
 using namespace std;
 using namespace common;
+using std::chrono::system_clock;
 
 const string logName = "run.log";
 
-string time2String(const tm& t){
-    stringstream ss;
-    ss << put_time(&t, "%d-%m-%Y %H-%M-%S");
+string toString(const chrono::system_clock::time_point& t){
+	auto t2 = system_clock::to_time_t(t);
+	auto tm = std::localtime(&t2);
+	stringstream ss;
+	ss << put_time(tm, "%d-%m-%Y %H-%M-%S");
     return ss.str();
 }
 
-const string boogieFileName = "../../modVer/test/AVLTree.bpl";
+const string boogieFileName = "C:\\Users\\uri\\VS17\\modVer\\modVer\\modVer\\test\\AVLTree.bpl";
 
 int parseBoogieFile(const string& fileName);
 int main(int argc, char*argv[])
@@ -29,9 +32,8 @@ int main(int argc, char*argv[])
     Log log(logFile);
     log.log(0,Log::Info,"Starting log");
 //    auto now = chrono::system_clock::now();
-    auto nowT = time(nullptr);
-    auto now = localtime(&nowT);
-    auto nowString = time2String(*now);
+	auto now = chrono::system_clock::now();
+	auto nowString = toString(now);
     log.log(0,Log::Info,"current time:" + nowString);
 
     cout << "I:Command line:" << endl;

@@ -5,7 +5,7 @@
 
 namespace common{
 
-static const std::unordered_map<char,int32_t> digitMap = {
+static const std::unordered_map<wchar_t,int32_t> digitMap = {
     {'0',0},
     {'1',1},
     {'2',2},
@@ -18,7 +18,7 @@ static const std::unordered_map<char,int32_t> digitMap = {
     {'9',9}
 };
 
-int32_t char2Int32(char c){
+int32_t char2Int32(wchar_t c){
     return digitMap.at(c);
 }
 
@@ -36,7 +36,7 @@ int32_t  string2Int32   (const std::wstring& s)
       if (v>std::numeric_limits<int32_t>::max())
         throw new StringConversionException();
   }
-  return v;
+  return (int32_t)v;
 }
 
 Integer  string2Integer (const std::wstring& s){

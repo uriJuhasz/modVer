@@ -20,13 +20,16 @@ using std::make_unique;
 COMPILER BoogiePL
 
 /*--------------------------------------------------------------------------*/
-    Program program;
+    unique_ptr<Program> program = make_unique<Program>();
 
     Parser(const std::basic_string<unsigned char>& buf)
-        : Parser(new Scanner(buf.c_str(),buf.size())){}
+        : Parser(new Scanner(buf.c_str(),buf.size()))
+    {
+
+    }
 
     void parse(){
-        BoogiePL();
+        Parse();
     }
 
     static void parse(const std::basic_string<unsigned char>& input){
@@ -137,7 +140,7 @@ PRODUCTIONS
 
 /*------------------------------------------------------------------------*/
 BoogiePL
-= (. auto program = make_unique<Program>(); .)
+= 
   { ConstantsDef  <. *program .>
   | FunctionDef   <. *program .>
   | AxiomP        <. *program .>
@@ -154,8 +157,8 @@ TypeDefs<. Program& prog .>
 = (. Attributes attributes; .)
   "type"
   AttributesP<attributes>
-        UserDefinedType<. prog, cloneC(attributes) .>
-  { "," UserDefinedType<. prog, cloneC(attributes) .> }    
+        UserDefinedType<. prog, cp(attributes) .>
+  { "," UserDefinedType<. prog, cp(attributes) .> }    
   ";"
   .
 
@@ -192,11 +195,11 @@ ConstantsDef<. Program& scope .>
                                                     scope.addVariableDef(
                                                         make_unique<Constant>(
                                                             pos, 
-                                                            cloneC(attributes), 
+                                                            cp(attributes), 
                                                             move(id), 
-                                                            type->clone(),
+                                                            cp(type),
                                                             unique, 
-                                                            orderSpec->clone())); 
+                                                            cp(orderSpec))); 
                                             .)
   .
 
@@ -221,7 +224,7 @@ GlobalVarDefs<. Scope& scope .>
   AttributesP<attributes>
   IdsTypeWheres<. [&attributes,&scope](auto&& id, auto&& type, auto&& e){
         scope.addVariableDef( make_unique<GlobalVariable>(
-            id->pos, cloneC(attributes), move(id), move(type), move(e) )); } .> 
+            id->pos, cp(attributes), move(id), move(type), move(e) )); } .> 
   ";"
   .
 
@@ -301,7 +304,7 @@ ProcedureP<. Program& prog .>
   (   ";"  
       { ProcSpecP<*spec> }
     | { ProcSpecP<*spec> }
-      ImplBody<. prog, id->clone(), cloneC(attributes), sig->cloneWOWhere(), spec->clone() .>
+      ImplBody<. prog, cp(id), cp(attributes), sig->cloneWOWhere(), cp(spec) .>
   )
   (. prog.addProcedure( make_unique<Procedure>(move(id), move(attributes), move(sig), move(spec))); .)
 .
@@ -403,7 +406,7 @@ LocalVar<. Locals& locals .>
   "var"
   AttributesP<attributes>
   IdsTypeWheres<. [&attributes,&locals](auto&& id, auto&& type, auto&& e){ 
-    locals.push_back(make_unique<LocalVariable>( cloneC(attributes), move(id), move(type) )); } .> 
+    locals.push_back(make_unique<LocalVariable>( cp(attributes), move(id), move(type) )); } .> 
   ";"
   .
 
@@ -417,7 +420,7 @@ IdsTypeS<. ActionIT action .>
 IdsTypeF<. ActionIT action .>
   = (. Identifiers ids;
        pType type; .)
-  IdentifiersCS<ids> ":" TypeP<type> (. for (auto& id : ids) action(move(id),type->clone()); .)
+  IdentifiersCS<ids> ":" TypeP<type> (. for (auto& id : ids) action(move(id),cp(type)); .)
 .
 
 IdsType<. Identifiers& ids, pType& type .>
@@ -436,7 +439,7 @@ IdsTypeWhere<.  ActionITW action .>
   IdsType<ids,type>
   [ "where" Expression<e>  ]
 	  (. for (auto& id : ids)
-	       action(move(id), type->clone(), e->clone());
+	       action(move(id), cp(type), cp(e));
 	  .)
   .
 
@@ -448,7 +451,7 @@ AttrsIdsTypeWheres<. ActionAITW action .>
 AttrsIdsTypeWhere<. ActionAITW action .>
 = (. Attributes attributes; .)
   AttributesP<attributes>
-  IdsTypeWhere<.[action,&attributes](auto id, auto type, auto e){action(cloneC(attributes),move(id),move(type),move(e));}.>
+  IdsTypeWhere<.[action,&attributes](auto id, auto type, auto e){action(cp(attributes),move(id),move(type),move(e));}.>
 .
 
 AttrsIdsTypes<. ActionAIT action .>
@@ -458,7 +461,7 @@ AttrsIdsTypes<. ActionAIT action .>
 AttrsIdsType<. ActionAIT action .>
 = (. Attributes attributes; .)
   AttributesP<attributes>
-  IdsTypeF<.[action,&attributes](auto&& id, auto&& type){action(cloneC(attributes),move(id),move(type));}.>
+  IdsTypeF<.[action,&attributes](auto&& id, auto&& type){action(cp(attributes),move(id),move(type));}.>
 .
 
 /*------------------------------------------------------------------------*/
@@ -1058,7 +1061,7 @@ FAExpressionP<. pExpression& e .>
      pVariableExpression ide;
      pIdentifier id; 
   .)
-  IdentifierExpressionP<ide>      (. id = ide->id->clone(); e = move(ide); .)
+  IdentifierExpressionP<ide>      (. id = cp(ide->id); e = move(ide); .)
   [ "(" ExpressionsCS<args> ")"  (. e = FAExpression::make(UserDefinedOp::make(move(id)), move(args)); .) ]
 .
 
@@ -1213,6 +1216,7 @@ Nat<. TextPosition& pos, Integer& n .>
   digits
   (. try {
        n = common::string2Integer(t->val);
+	   pos = toPos(t);
      } catch (std::exception&) {
        this->SemErr("incorrectly formatted number");
        n = 0;
@@ -1265,7 +1269,7 @@ FloatP<. Float& f, TextPosition& pos .>
   float   (. s = t->val; pos = toPos(t); .)
   (. try {
        f = string2Float(s);
-     } catch (std::exception& e) {
+     } catch (std::exception&) {
        this->SemErr(L"incorrectly formatted floating point number " + s);
      }
   .)

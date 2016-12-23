@@ -20,7 +20,7 @@ pConstantOrderSpec ConstantOrderSpec::clone() const{return make_unique<ConstantO
 
 
 pExpression CodeExpression::clone() const{
-    return make_unique<CodeExpression>(pos,cloneC(locals),ss->clone());
+    return make_unique<CodeExpression>(pos,cp<Locals>(locals),ss->clone());
 }
 
 
@@ -90,7 +90,7 @@ Sign getSign(const wstring& s, unsigned int& i){
     return r;
 }
 
-Sign sign(char c){return c=='+' ? Sign::Pos : Sign::Neg; }
+Sign sign(wchar_t c){return c=='+' ? Sign::Pos : Sign::Neg; }
 
 bool inbits(Integer i, int32_t bits){return abs(i)<pow(Integer(2),bits);}
 

@@ -1,8 +1,10 @@
 #ifndef COMMON__DATA_TYPES_H
 #define COMMON__DATA_TYPES_H
 #include <string>
-#include <boost/multiprecision/cpp_int.hpp>
 #include <exception>
+#pragma warning(push, 0)  
+#include <boost/multiprecision/cpp_int.hpp>
+#pragma warning(pop)
 
 namespace common{
     typedef wchar_t     Char;
