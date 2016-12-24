@@ -28,13 +28,14 @@ COMPILER BoogiePL
 
     }
 
-    void parse(){
+    pProgram parse(){
         Parse();
+		return move(program);
     }
 
-    static void parse(const std::basic_string<unsigned char>& input){
+    static pProgram parse(const std::basic_string<unsigned char>& input){
         Parser parser(input);
-        parser.parse();
+        return parser.parse();
     }
 
     void SemErr(const wstring& s) {
@@ -77,10 +78,10 @@ COMPILER BoogiePL
       return n->kind==_ifKW;
     }
 
-    typedef function< void(Attributes&&, pIdentifier&&, pType&&, pExpression&&) > ActionAITW;
-    typedef function< void(              pIdentifier&&, pType&&, pExpression&&) > ActionITW;
-    typedef function< void(              pIdentifier&&, pType&&               ) > ActionIT;
-    typedef function< void(Attributes&&, pIdentifier&&, pType&&               ) > ActionAIT;
+    typedef function< void(bool, Attributes&&, pIdentifier&&, pType&&, pExpression&&) > ActionAITW;
+    typedef function< void(bool,               pIdentifier&&, pType&&, pExpression&&) > ActionITW;
+    typedef function< void(bool,               pIdentifier&&, pType&&               ) > ActionIT;
+    typedef function< void(bool, Attributes&&, pIdentifier&&, pType&&               ) > ActionAIT;
 
 /*--------------------------------------------------------------------------*/
 CHARACTERS
@@ -194,15 +195,17 @@ ConstantsDef<. Program& scope .>
   IdsType<ids,type>
   [ OrderSpec<*orderSpec> ]
   ";"
-                                            (.  for (auto& id : ids) 
+                                            (.  for (auto i=0; i<ids.size(); i++){
+													auto l = (i ==ids.size()-1);
                                                     scope.addVariableDef(
                                                         make_unique<Constant>(
                                                             pos, 
-                                                            cp(attributes), 
-                                                            move(id), 
-                                                            cp(type),
+                                                            mOc(l,move(attributes)), 
+                                                            move(ids[i]), 
+                                                            mOc(l,move(type)),
                                                             unique, 
-                                                            cp(orderSpec))); 
+                                                            mOc(l,move(orderSpec)))); 
+											     }
                                             .)
   .
 
@@ -225,9 +228,9 @@ GlobalVarDefs<. Scope& scope .>
      Attributes attributes; .)
   "var"                                     (. pos = toPos(t); .)
   AttributesP<attributes>
-  IdsTypeWheres<. [&attributes,&scope](auto&& id, auto&& type, auto&& e){
+  IdsTypeWheres<. [&attributes,&scope](bool l,auto&& id, auto&& type, auto&& e){
         scope.addVariableDef( make_unique<GlobalVariable>(
-            id->pos, cp(attributes), move(id), move(type), move(e) )); } .> 
+            id->pos, mOc(l,move(attributes)), move(id), move(type), move(e) )); } .> 
   ";"
   .
 
@@ -322,7 +325,7 @@ ProcSignatureP<. pProcSignature& sig .>
 
 ProcFormals<. FormalDir dir, Formals& formals .>
 = "("
-  [ AttrsIdsTypeWheres<. [dir,&formals](auto&& attrs, auto&& id, auto&& type, auto&& e)
+  [ AttrsIdsTypeWheres<. [dir,&formals](bool, auto&& attrs, auto&& id, auto&& type, auto&& e)
       {formals.push_back(make_unique<Formal>(move(attrs),move(id),move(type),move(e),dir));} .> ]
   ")"
 .
@@ -378,7 +381,7 @@ ImplSignature<. pProcSignature& sig .>
 
 ImplFormals<. FormalDir dir, Formals& formals .>
 = "("
-  [ IdsTypeS<. [dir,&formals](auto&& id, auto&& type)
+  [ IdsTypeS<. [dir,&formals](bool, auto&& id, auto&& type)
       {formals.push_back(make_unique<Formal>(Attributes(),move(id),move(type),pExpression(),dir));} .> ]
   ")"
 .
@@ -399,7 +402,7 @@ ScopedBlocksP<. ScopedBlock& b .>
 /*------------------------------------------------------------------------*/
 BoundVarsP<. BoundVariables& vars .>
 = 
-  AttrsIdsTypes<. [&vars](auto&& attrs, auto&& id, auto&& type){ 
+  AttrsIdsTypes<. [&vars](bool, auto&& attrs, auto&& id, auto&& type){ 
     vars.push_back(make_unique<BoundVariable>(move(attrs),move(id),move(type))); } .>
   .
 
@@ -408,8 +411,9 @@ LocalVar<. Locals& locals .>
 = (. Attributes attributes; .)
   "var"
   AttributesP<attributes>
-  IdsTypeWheres<. [&attributes,&locals](auto&& id, auto&& type, auto&& e){ 
-    locals.push_back(make_unique<LocalVariable>( cp(attributes), move(id), move(type) )); } .> 
+  IdsTypeWheres<. [&attributes,&locals](bool l, auto&& id, auto&& type, auto&& e){ 
+    locals.push_back(make_unique<LocalVariable>( 
+		mOc(l,move(attributes)), move(id), move(type), move(e) )); } .> 
   ";"
   .
 
@@ -423,7 +427,13 @@ IdsTypeS<. ActionIT action .>
 IdsTypeF<. ActionIT action .>
   = (. Identifiers ids;
        pType type; .)
-  IdentifiersCS<ids> ":" TypeP<type> (. for (auto& id : ids) action(move(id),cp(type)); .)
+  IdentifiersCS<ids> ":" TypeP<type> (. 
+	for (auto i=0;i<ids.size(); i++){
+		auto& id = ids[i];
+		auto l = (i==ids.size()-1);
+		action(l, move(id),mOc(l,move(type))); 
+	}
+	.)
 .
 
 IdsType<. Identifiers& ids, pType& type .>
@@ -441,8 +451,11 @@ IdsTypeWhere<.  ActionITW action .>
   .)
   IdsType<ids,type>
   [ "where" Expression<e>  ]
-	  (. for (auto& id : ids)
-	       action(move(id), cp(type), cp(e));
+	  (. for (auto i=0; i<ids.size(); i++){
+			auto& id = ids[i];
+			bool l = i==ids.size()-1;
+			action(l,move(id), mOc(l,move(type)),mOc(l,move(e)));
+		 }
 	  .)
   .
 
@@ -454,7 +467,9 @@ AttrsIdsTypeWheres<. ActionAITW action .>
 AttrsIdsTypeWhere<. ActionAITW action .>
 = (. Attributes attributes; .)
   AttributesP<attributes>
-  IdsTypeWhere<.[action,&attributes](auto id, auto type, auto e){action(cp(attributes),move(id),move(type),move(e));}.>
+  IdsTypeWhere<.[action,&attributes](bool l, auto id, auto type, auto e){
+	action(l,mOc(l,move(attributes)),move(id),move(type),move(e));}
+  .>
 .
 
 AttrsIdsTypes<. ActionAIT action .>
@@ -464,7 +479,8 @@ AttrsIdsTypes<. ActionAIT action .>
 AttrsIdsType<. ActionAIT action .>
 = (. Attributes attributes; .)
   AttributesP<attributes>
-  IdsTypeF<.[action,&attributes](auto&& id, auto&& type){action(cp(attributes),move(id),move(type));}.>
+  IdsTypeF<.[action,&attributes](bool l, auto&& id, auto&& type){
+	action(l, mOc(l,move(attributes)),move(id),move(type));}.>
 .
 
 /*------------------------------------------------------------------------*/
@@ -540,8 +556,8 @@ StmtList<. TextPosition pos, pBlockStatement& bs .>
        pNSStatement      endCmd;
 	 
   .)
-    (   ( (LabelC<labels> LabelsC<labels> |  CmdC<cmds>) { CmdC<cmds> } [ NSCmd<endCmd> ] )
-	  | (                                                                 NSCmd<endCmd>   ) )
+    (   ( (IF (isLabel()) LabelC<labels> LabelsC<labels> |  CmdC<cmds>) { CmdC<cmds> } [ NSCmd<endCmd> ] )
+	  | (                                                                                NSCmd<endCmd>   ) )
     (. blocks.push_back(make_unique<SBlock>(move(labels),move(cmds),move(endCmd))); .)
   }
     "}" 
@@ -1029,11 +1045,14 @@ ArrayExpressionR<. pExpression& e .>
 
 MapReadOrWrite<. TextPosition pos, pExpression& e .>
 = (. Expressions  args;
-     pOperator    op = OpC::mapRead(pos); 
+     pOperator    op;
+	 args.push_back(move(e));
   .)
   ( ( ExpressionsCS<args> [ MapWrite<op,args> ] )
     |                       MapWrite<op,args> 
-  )                                                  (. e = FAExpression::make(move(op),move(args)); .)
+  )                                                  
+  (. if (!op) op = OpC::mapRead(pos);  
+     e = FAExpression::make(move(op),move(args)); .)
 .
         
 MapWrite<. pOperator& op, Expressions& args .>
@@ -1043,7 +1062,7 @@ MapWrite<. pOperator& op, Expressions& args .>
 
 BvBoundP<. TextPosition pos, pExpression& e .>
 = (. pExpression l,h; .)
-  NatE<l> ":" NatE<h> (. e = FAExpression::make(OpC::bvSelect(pos), move(l), move(h) ); .)
+  NatE<l> ":" NatE<h> (. e = FAExpression::make(OpC::bvSelect(pos), move(e),move(l), move(h) ); .)
 .
 
 /*------------------------------------------------------------------------*/
@@ -1074,9 +1093,11 @@ FAExpressionP<. pExpression& e .>
      pVariableExpression ide;
      pIdentifier id; 
   .)
-  IdentifierExpressionP<ide>      (. id = cp(ide->id); e = move(ide); .)
-  [ "(" [ ExpressionC<args> { "," ExpressionC<args> } ] ")"  (. e = FAExpression::make(UserDefinedOp::make(move(id)), move(args)); .) ]
-.
+	(IdentifierP<id>
+//  IdentifierExpressionP<ide>      (. id = cp(ide->id); e = move(ide); .)
+	[ "(" [ ExpressionC<args> { "," ExpressionC<args> } ] ")"  (. e = FAExpression::make(UserDefinedOp::make(move(id)), move(args)); .) ]
+	)(. if (!e) e = make_unique<VariableExpression>(move(id)); .)
+  .
 
 OldExpressionP<. pExpression& e .>
 = (.  TextPosition pos; .)
@@ -1209,10 +1230,11 @@ IfThenElseExpression<. pExpression& e .>
 
 
 /*------------------------------------------------------------------------*/
-IdentifierExpressionP<. pVariableExpression& e .> = 
+/*IdentifierExpressionP<. pVariableExpression& e .> = 
     (. pIdentifier id; .)
     IdentifierP<id>  (. e = make_unique<VariableExpression>(move(id)); .)
 .
+*/
 
 IdentifierP<. pIdentifier& id .> = 
     ident (. id = make_unique<Identifier>(toPos(t),toIdentifier(t->val)); .)

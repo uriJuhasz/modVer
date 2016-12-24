@@ -29,7 +29,6 @@ namespace ParseTree{
 
     // <editor-fold desc="utilities">
 	template<class T> T cp(const T& in) {
-		//		static_assert(std::is_array<C>);
 		T out;
 		for (const auto& e : in)
 			out.push_back(cp(e));
@@ -40,6 +39,11 @@ namespace ParseTree{
 	{
 		return (in) ? in->clone() : unique_ptr<T>();
 	}
+
+	template<class T> T mOc(bool l, T&& in) {
+		return l ? move(in) : cp(in);
+	}
+
 	
 /*	template<template<typename> class C,typename T> C<unique_ptr<T>> clone(const C<unique_ptr<T>>& in){
 //		static_assert(std::is_array<C>);
@@ -65,6 +69,7 @@ namespace ParseTree{
     protected:
     	PTreeNode(const TextPosition pos = NoPos) 
                 : pos(pos){}
+		inline virtual ~PTreeNode() {}
     };
     // </editor-fold>
     
@@ -96,21 +101,23 @@ namespace ParseTree{
     class WExpression : public PTreeNode{
     public:
         WExpression(TextPosition pos) : PTreeNode(pos) {}
+		inline virtual ~WExpression() { }
     };
     typedef unique_ptr<WExpression> pWExpression;
 
     class WildCardExpression : public WExpression{
     public:
         WildCardExpression(TextPosition pos) : WExpression(pos) {}
-    };
+		inline virtual ~WildCardExpression() {}
+	};
     typedef unique_ptr<Expression> pExpression;
 
     class Expression;
     typedef unique_ptr<Expression> pExpression;
     class Expression : public WExpression{
     public:
-        virtual ~Expression() = 0;
-        virtual pExpression clone() const = 0;
+		inline virtual ~Expression() {}
+		virtual pExpression clone() const = 0;
 //        static void make(const TextPosition& pos, const Operation op, std::initializer_list<unique_ptr<Expression>>);
     protected:
         Expression(TextPosition pos) : WExpression(pos) {}
@@ -287,7 +294,7 @@ namespace ParseTree{
                  pIdentifier&& id,
                  pType&&       type,
                  bool          isUnique,
-                 pConstantOrderSpec parentSpec)
+                 pConstantOrderSpec orderSpec)
                 : Variable(
                    pos,
                    move(attributes),
@@ -372,15 +379,19 @@ namespace ParseTree{
         LocalVariable( 
                  Attributes&&  attributes,
                  pIdentifier&& id,
-                 pType&&       type)
+                 pType&&       type,
+				 pExpression&& we
+			)
                 : Variable(
                    id->pos,
                    move(attributes),
                    move(id),
                    move(type),
-                   0)
+                   0),
+			       we(move(we))
         {}
-        virtual unique_ptr<LocalVariable> clone() const {return make_unique<LocalVariable>(cp(attributes), cp(id), cp(type)); }
+        virtual unique_ptr<LocalVariable> clone() const {return make_unique<LocalVariable>(cp(attributes), cp(id), cp(type),cp(we)); }
+		pExpression we;
     };
     enum class FormalDir{ In, Out };
     
@@ -637,6 +648,7 @@ namespace ParseTree{
         vector<pProcedure>      procedures;
         vector<pImplementation> implementations;
     };
+	typedef unique_ptr<Program> pProgram;
 //    class Operation : public ASTNode{};
     // </editor-fold>
 
@@ -725,27 +737,27 @@ namespace ParseTree{
         pOperator op;
         Expressions args;
         
-        static unique_ptr<FAExpression> make(pOperator&& op){ return make(move(op),Expressions()); }
-        static unique_ptr<FAExpression> make(pOperator&& op,pExpression&& e0){ 
+        static pFAExpression make(pOperator&& op){ return make(move(op),Expressions()); }
+        static pFAExpression make(pOperator&& op,pExpression&& e0){ 
             Expressions es; es.push_back(move(e0));
             return make(move(op),move(es)); 
         }
-        static unique_ptr<FAExpression> make(pOperator&& op,pExpression&& e0, pExpression&& e1){ 
+        static pFAExpression make(pOperator&& op,pExpression&& e0, pExpression&& e1){ 
             Expressions es; es.push_back(move(e0)); es.push_back(move(e1));
             return make(move(op),move(es)); 
         }
-        static unique_ptr<FAExpression> make(pOperator&& op,pExpression&& e0, pExpression&& e1, pExpression&& e2){ 
+        static pFAExpression make(pOperator&& op,pExpression&& e0, pExpression&& e1, pExpression&& e2){ 
             Expressions es; es.push_back(move(e0)); es.push_back(move(e1)); es.push_back(move(e2));
             return make(move(op),move(es)); 
         }
-        static unique_ptr<FAExpression> make(pOperator&& op,Expressions&& args){
-            return move(make_unique<FAExpression>(move(op), move(args)));
+        static pFAExpression make(pOperator&& op,Expressions&& args){
+            return make_unique<FAExpression>(move(op), move(args));
         }
             
     };
     class QExpression : public Expression{
     public:
-        QExpression(TextPosition pos, Binder binder, Attributes&& attrs, Triggers&& triggers, 
+        QExpression(TextPosition pos, Binder binder, Attributes&& attributes, Triggers&& triggers,
                     TypeParameters&& tVars, BoundVariables&& vars, pExpression e)
             : Expression(pos), binder(binder), attributes(move(attributes)), triggers(move(triggers)),
               tVars(move(tVars)), vars(move(vars)), e(move(e)) {}
@@ -1097,6 +1109,7 @@ namespace ParseTree{
             : ITEStatement(pos,move(cond),move(thenS),nullptr){}
         ITEStatement(TextPosition pos, pWExpression&& cond, pBlockStatement&& thenS, pBlockStatement&& elseS)
             : CompoundStatement(pos), cond(move(cond)), thenS(move(thenS)), elseS(move(elseS)){}
+		~ITEStatement() {}
         pWExpression cond;
         pStatement   thenS;
         pStatement   elseS;
@@ -1107,7 +1120,8 @@ namespace ParseTree{
     public:
         WhileStatement(TextPosition pos, pWExpression&& cond, SpecExpressions&& invariant, pBlockStatement&& body)
             : CompoundStatement(pos), cond(move(cond)), invariant(move(invariant)), body(move(body)){}
-        pWExpression    cond;
+		~WhileStatement() {}
+		pWExpression    cond;
         SpecExpressions invariant;
         pBlockStatement body;
     };

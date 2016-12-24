@@ -7,7 +7,7 @@ namespace ParseTree{
 Statement::~Statement(){}
 Operator::~Operator(){}
 AttributeParam::~AttributeParam(){}
-Expression::~Expression(){}
+//Expression::~Expression(){}
 TypeDef::~TypeDef(){}
 ProcedureSC::~ProcedureSC(){}
 
