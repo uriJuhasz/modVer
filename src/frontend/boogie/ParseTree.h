@@ -643,10 +643,10 @@ namespace ParseTree{
         void addAxiom         (pAxiom&&          a){axioms.push_back(move(a)); }
         void addProcedure     (pProcedure&&      p){procedures.push_back(move(p)); }
         void addImplementation(pImplementation&& i){implementations.push_back(move(i));}
-    private:
         vector<pAxiom>          axioms;
         vector<pProcedure>      procedures;
         vector<pImplementation> implementations;
+    private:
     };
 	typedef unique_ptr<Program> pProgram;
 //    class Operation : public ASTNode{};

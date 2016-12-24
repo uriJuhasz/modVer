@@ -108,6 +108,8 @@ int parseBoogieFile(const string& boogieFN){
 
     cout << "I: Parsing" << endl;
     pProgram prog = frontend::boogie::parser::Parser::parse(input);
+    auto ni = prog->implementations.size();
+    cout << "I: Done parsing - implementations : " << ni << endl;
 
     cout << "I: Closing Boogie file \"" << boogieFN << "\"" << endl;
     return 0;
