@@ -10,6 +10,7 @@ set (CMAKE_VERBOSE_MAKEFILE on)
 #set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pedantic -Wall -std=c++17")
 
+set(BOOST_ROOT /home/uri/apps/boost_1_62_0)
 set(Boost_DEBUG 1)
 find_package(Boost 1.62.0 COMPONENTS)
 

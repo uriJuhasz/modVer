@@ -9,7 +9,7 @@ set (COCO_OUTPUTS
     ${BOOGIE_COCO_DIR}/Parser.h
 )
 
-set (COCO_EXE C:/work/cocoR/coco.exe)
+set (COCO_EXE /home/uri/apps/Coco/Coco)
 
 add_custom_command(
   OUTPUT  ${COCO_OUTPUTS}

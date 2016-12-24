@@ -22,7 +22,7 @@ string toString(const chrono::system_clock::time_point& t){
     return ss.str();
 }
 
-const string boogieFileName = "C:\\Users\\uri\\VS17\\modVer\\modVer\\modVer\\test\\AVLTree.bpl";
+const string boogieFileName = "../../test/AVLTree.bpl";
 
 int parseBoogieFile(const string& fileName);
 int main(int argc, char*argv[])
